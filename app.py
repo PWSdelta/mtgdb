@@ -20,7 +20,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 
-if os.getenv("", "").startswith("standard"):
+if os.getenv("APP_ENVIRONMENT", "DEV").startswith("standard"):
     engine = create_engine(os.environ.get('RW_DATABASE_URL'))
 else:
     engine = create_engine(os.environ.get('LOCAL_DB_URL'))
@@ -540,4 +540,6 @@ def hello_world():
 
 
 if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=port)
+
     app.run()

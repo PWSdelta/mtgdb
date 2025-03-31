@@ -72,3 +72,5 @@ local_settings.py
 
 # Migrations (if you want to version them, remove this)
 # migrations/
+
+.env
