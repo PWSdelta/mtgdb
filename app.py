@@ -23,7 +23,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 if os.getenv("APP_ENVIRONMENT", "DEV").startswith("standard"):
     engine = create_engine(os.environ.get('LOCAL_DB_URL'))
 else:
-    engine = create_engine(os.environ.get('RW_DATABASE_URL'))
+    engine = create_engine(os.environ.get('DATABASE_URL'))
 
 # Automatically map the database schema
 Base = automap_base()
