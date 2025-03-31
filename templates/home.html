@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+
+
+{% include "_hero.html" %}
+{% include "_home_features.html" %}
+
+
+
+<div class="container my-5">
+    <h2 class="text-center">Taste of Chaos</h2>
+      <p>
+    Looking for some inspiration or just love the thrill of the unknown? Check out our Random Magic: The Gathering Cards section, where every refresh brings a new mix of cards from across the game's history. Who knows? You might just stumble upon an old favorite or discover something totally unexpected!</p>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+    {% for card in random_cards %}
+      {% include "_card_component.html" %}
+    {% endfor %}
+    </div>
+</div>
+
+
+
+
+
+<div class="container my-5">
+    <h2 class="text-center">The High Rollers of Magic</h2>
+      <p>
+    Some cards are powerful, some are legendary… and some are just straight-up expensive! Whether it’s game-breaking power, collector’s prestige, or sheer rarity, these cards sit at the top of the market. Take a look—but careful, your wallet might feel the burn.</p>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+
+    {% for card in expensive_cards %}
+      {% include "_card_component.html" %}
+    {% endfor %}
+    </div>
+</div>
+
+
+
+
+{% endblock %}

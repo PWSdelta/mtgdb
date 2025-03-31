@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+
+
+
+<div class="container my-5">
+
+<div class="row">
+{% if error %}
+    <p style="color: red;">{{ error }}</p>
+{% endif %}
+</div>
+
+
+<div class="row">
+    {% if product %}
+        <h2>{{ product.name }}</h2>
+        <p><strong>ID:</strong> <a href="https://www.tcgplayer.com/product/{{ product.productId }}" target="_blank>">{{ product.productId }}</a></p>
+        <p><strong>Market Price:</strong> ${{ product.marketPrice }}</p>
+    {% else %}
+        <p>No products to display.</p>
+    {% endif %}
+</div>
+
+</div>
+{% endblock %}

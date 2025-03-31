@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collated Info</title>
+</head>
+<body>
+<h1>Collated Information</h1>
+
+{% for table_name, rows in data.items() %}
+    <!-- Table group starts -->
+    <h2>{{ table_name }}</h2> <!-- Show the table name as a section header -->
+    <ul>
+        {% for row in rows %}
+            <li>{{ row }}</li> <!-- Display each value in the table -->
+        {% endfor %}
+    </ul>
+    <!-- Table group ends -->
+{% endfor %}
+</body>
+</html>

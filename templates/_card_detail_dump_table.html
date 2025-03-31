@@ -1,0 +1,35 @@
+<table class="table table-bordered table-striped">
+            <tbody>
+                {% for column in card.__table__.columns %}
+                    <tr>
+                        <td><strong>{{ column.name }}</strong></td>
+                        <td>
+                            {% set value = card.__getattribute__(column.name) %}
+
+                            {% if value is none %}
+                                <em>None</em>
+                            {% elif value is mapping %} {# Check if the value is JSON/dict-like #}
+                                <ul>
+                                    {% for key, val in value.items() %}
+                                        <li>
+                                            <strong>{{ key }}:</strong>
+                                            {% if val is mapping %}
+                                                <ul>
+                                                    {% for subkey, subval in val.items() %}
+                                                        <li><strong>{{ subkey }}:</strong> {{ subval }}</li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% else %}
+                                                {{ val }}
+                                            {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>

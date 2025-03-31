@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+
+<div class="container">
+    <!-- Artist Header -->
+    <h1>Endless Art</h1>
+    <p>Sit back. Relax. Enjoy the show.</p>
+
+<div id="carouselExample" class="carousel carousel-fade" data-bs-ride="carousel">
+
+  <div class="carousel-inner">
+    {% for card in cards %}
+        <div class="carousel-item carousel-fade {% if loop.first %}active{% endif %}">
+            <a href="/card/{{ card.id }}">
+                <img src="{{ card.image_uris.art_crop }}" class="d-block w-100" alt="...">
+            </a>
+        </div>
+    {% endfor %}
+  </div>
+
+  <button class="carousel-control-prev" type="button" data-bs-target="#carouselExample" data-bs-slide="prev">
+    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+    <span class="visually-hidden">Previous</span>
+  </button>
+  <button class="carousel-control-next" type="button" data-bs-target="#carouselExample" data-bs-slide="next">
+    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+    <span class="visually-hidden">Next</span>
+  </button>
+</div>
+
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+
+<div class="container">
+    <!-- Artist Header -->
+    <h1>Cards by {{ artist_name }}</h1>
+    <p>Below is a collection of cards illustrated by <strong>{{ artist_name }}</strong>.</p>
+
+    <!-- List of Cards -->
+    <div class="cards-list">
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+            {% for card in cards %}
+              {% include "_card_component.html" %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
