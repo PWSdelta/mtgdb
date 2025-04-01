@@ -1,9 +1,11 @@
 import os
+
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
+from dotenv import load_dotenv
 
-
+load_dotenv()
 
 
 def get_existing_columns(cursor, table_name):
@@ -92,15 +94,13 @@ def auto_map_and_insert(file_path, table_name, connection):
 
 
 def main():
-
     db_params = {
-        "dbname": os.getenv("DB_NAME", "mtgdb"),
-        "user": os.getenv("DB_USER", "postgres"),
-        "password": os.getenv("DB_PASSWORD"),
-        "host": os.getenv("DB_HOST", "localhost"),
+        "dbname": "mtgdb",
+        "user": "postgres",
+        "password": os.getenv('DB_PASSWORD'),
+        "host": "localhost",
         "port": 5432
     }
-
 
     # Folder containing the CSV files
     csv_folder = "downloads/"
