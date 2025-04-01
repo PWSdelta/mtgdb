@@ -15,6 +15,11 @@ from sqlalchemy.sql import func
 
 load_dotenv()
 
+
+print(f"PORT environment variable: {os.environ.get('PORT', 'not set')}")
+
+
+
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
