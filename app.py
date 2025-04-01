@@ -543,16 +543,16 @@ def sitemap(sitemap_id):
     return Response(stream_with_context(generate()), mimetype='text/xml')
 
 
-@app.route('/products/category/<category_id>', methods=['GET'])
-def products_by_category(category_id):
-    # Convert `category_id` to a string before using in a query
-    category_str = str(category_id)
-
-    # Query products where categoryId matches the given category_id
-    products = session.query(ProductCategories).filter_by(categoryId=category_str).all()
-
-    # Render the results on a template or return JSON (based on your needs)
-    return render_template('products_by_category.html', products=products)
+# @app.route('/products/category/<category_id>', methods=['GET'])
+# def products_by_category(category_id):
+#     # Convert `category_id` to a string before using in a query
+#     category_str = str(category_id)
+#
+#     # Query products where categoryId matches the given category_id
+#     products = session.query(ProductCategories).filter_by(categoryId=category_str).all()
+#
+#     # Render the results on a template or return JSON (based on your needs)
+#     return render_template('products_by_category.html', products=products)
 
 
 @app.route('/product/<product_id>', methods=['GET'])
