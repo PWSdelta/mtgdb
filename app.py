@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
 from flask_cors import CORS
+from flask_caching import Cache
+
 
 app = Flask(__name__)
 CORS(app)
@@ -20,12 +22,20 @@ CORS(app)
 load_dotenv()
 
 
-print(f"PORT environment variable: {os.environ.get('PORT', 'not set')}")
-
-
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+# Cache configuration
+app.config['CACHE_TYPE'] = 'SimpleCache'  # For production, consider 'redis' or 'memcached'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 300
+cache = Cache(app)
+# Enable Jinja2 fragment caching
+app.jinja_env.add_extension('jinja2.ext.loopcontrols')
+app.jinja_env.add_extension('flask_caching.jinja2ext.FragmentCacheExtension')
+app.jinja_env.fragment_cache = cache
+
+
+
 
 
 if os.getenv("APP_ENVIRONMENT", "").startswith("DEV"):
@@ -57,9 +67,6 @@ session = Session()
 
 
 
-@app.before_request
-def log_request():
-    print(f"Received {request.method} request to {request.path}")
 
 
 def fetch_random_card_from_db():
