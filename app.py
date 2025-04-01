@@ -230,9 +230,9 @@ def update_product_price(product_id):
             print(f"New normal_price (card): {card.normal_price}")
 
         # Always update the price in the products table
-        print(f"Old price (product): {product.deltaprice}")
+        print(f"Old price (product): {product.deltaPrice}")
         product.price = round(mean_price, 2)
-        print(f"New price (product): {product.deltaprice}")
+        print(f"New price (product): {product.deltaPrice}")
 
         session.commit()
         print(f"Successfully updated price for product_id {product.productId}")
