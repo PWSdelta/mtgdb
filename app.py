@@ -20,10 +20,6 @@ CORS(app)
 load_dotenv()
 
 
-print(f"PORT environment variable: {os.environ.get('PORT', 'not set')}")
-
-
-
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -475,7 +471,7 @@ def art_gallery():
     cards = (session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
             ).order_by(func.random()
-            ).limit(100)
+            ).limit(30)
              .all())
 
     if not cards:
@@ -501,14 +497,14 @@ def get_card(card_id):
         CardDetails.artist == card.artist,  # Same artist
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(6).all()  # Limit to 6 results
+    ).limit(9).all()  # Limit to 6 results
 
     # Query for other printings of the same card
     other_printings = session.query(CardDetails).filter(
         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(6).all()  # Limit to 6 results
+    ).limit(9).all()  # Limit to 6 results
 
     # Access the `all_parts` JSONB field
     all_parts = card.all_parts or []  # Default to an empty list if None
