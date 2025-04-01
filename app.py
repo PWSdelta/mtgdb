@@ -12,6 +12,10 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)
 
 load_dotenv()
 
@@ -51,6 +55,12 @@ ProductCategories = Table(
 
 Session = sessionmaker(bind=engine)
 session = Session()
+
+
+
+@app.before_request
+def log_request():
+    print(f"Received {request.method} request to {request.path}")
 
 
 def fetch_random_card_from_db():
