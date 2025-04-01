@@ -563,10 +563,10 @@ def get_product(product_id):
     if product:
         product_data = prettify_keys(product)
         update_product_price(product_id)
-        return render_template('product_display.html', product=product_data)
+        return render_template('product.html', product=product_data)
     else:
         # Handle the case where there are no products in the database
-        return render_template('product_display.html', product=None, error="No products available.")
+        return render_template('product.html', product=None, error="No products available.")
 
 
 @app.route('/random_product', methods=['GET'])
@@ -580,10 +580,10 @@ def random_product_view():
         update_product_price(random_product.productId)
         product_data = prettify_keys(random_product)
 
-        return render_template('product_display.html', product=product_data)
+        return render_template('product.html', product=product_data)
     else:
         # Handle the case where there are no products in the database
-        return render_template('product_display.html', product=None, error="No products available.")
+        return render_template('product.html', product=None, error="No products available.")
 
 
 @app.route('/sets/<set_code>')
