@@ -1,28 +1,24 @@
-from datetime import datetime, timedelta
-import re
 import math
 import os
+import re
+from datetime import datetime
+
 import numpy as np
 from dotenv import load_dotenv
 from flask import Flask
 from flask import request, render_template, Response, stream_with_context
-
-
-from flask_sitemap import Sitemap
-
+from flask_caching import Cache
 from flask_caching.jinja2ext import CacheExtension
-from sqlalchemy import create_engine, Table
+from flask_cors import CORS
+from flask_sitemap import Sitemap
+from jinja2.ext import LoopControlExtension
+from sqlalchemy import create_engine
 from sqlalchemy import inspect
+from sqlalchemy import orm
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
-from flask_cors import CORS
-from flask_caching import Cache
-from jinja2 import ext
-from jinja2.ext import LoopControlExtension
-
-
 
 app = Flask(__name__)
 ext = Sitemap(app)
@@ -66,12 +62,24 @@ Products = Base.classes.products
 SpotPrices = Base.classes.spot_prices
 SetDetails = Base.classes.set_details
 
-
-ProductCategories = Table(
-    'product_categories',  # Exact table name
-    Base.metadata,  # Metadata tied to Base
-    autoload_with=engine  # Dynamically load structure from DB
+Products.card_details = relationship(
+    "card_details",
+    primaryjoin="products.productId == foreign(card_details.tcgplayer_id)",
+    back_populates="product"
 )
+
+CardDetails.product = relationship(
+    "products",
+    primaryjoin="foreign(card_details.tcgplayer_id) == products.productId",
+    back_populates="card_details"
+)
+
+
+
+
+
+
+
 
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -170,7 +178,14 @@ def update_product_price(product_id):
 
     # Fetch product data
     try:
-        product = session.query(Products).filter(Products.productId == product_id).first()
+        # product = session.query(Products).get(product_id)
+
+        product = (session.query(Products)
+                   .outerjoin(CardDetails, CardDetails.tcgplayer_id == Products.productId)
+                   .options(orm.contains_eager(Products.card_details))
+                   .filter(Products.productId == product_id)
+                   .first())
+
         if not product:
             raise ValueError(f"No product found with product_id: {product_id}")
 
@@ -721,34 +736,47 @@ def get_card(card_id):
 @app.route('/', methods=['GET', 'HEAD'])
 def hello_world():
     try:
+        # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
-        update_normal_price(hero_card.id)
 
+        # Only update price if we have a hero card
+        if hero_card is not None:
+            update_normal_price(hero_card.id)
+
+        # Get random product if possible
         random_product = session.query(Products).order_by(func.random()).first()
-        update_product_price(random_product.productId)
+        if random_product is not None:
+            update_product_price(random_product.productId)
 
         if request.method == 'HEAD':
             random_product = session.query(Products).order_by(func.random()).first()
-            update_product_price(random_product.productId)
-
+            if random_product is not None:
+                update_product_price(random_product.productId)
 
         expensive_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
         ).order_by(func.random()
-        ).limit(15).all()
+                   ).limit(15).all() or []  # Ensure it's at least an empty list
 
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),
             CardDetails.normal_price >= 0
         ).order_by(func.random()
-        ).limit(15).all()
+                   ).limit(15).all() or []  # Ensure it's at least an empty list
 
-        return render_template("home.html", hero_card=hero_card, random_cards=random_cards, expensive_cards=expensive_cards)
+        # Render the page with whatever data we have
+        return render_template(
+            "home.html",
+            hero_card=hero_card,  # This could be None
+            random_cards=random_cards,
+            expensive_cards=expensive_cards
+        )
     except Exception as e:
-        print(f"Transaction failed: {e}")
-        session.rollback()  # Reset the session after exception
+        print(f"Transaction failed: {str(e)}")
+        session.rollback()
+        return render_template("error.html", error=str(e)), 500
     finally:
-        session.close()  # Ensure session is closed
+        session.close()
 
 
 if __name__ == '__main__':
