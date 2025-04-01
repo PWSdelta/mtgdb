@@ -429,13 +429,13 @@ def random_card_view():
     cards_by_artist = session.query(CardDetails).filter(
         CardDetails.artist == card_details.artist,
         CardDetails.id != card_details.id  # Exclude the current card itself
-    ).all()
+    ).limit(9).all()
 
     # Query other printings (same card with different versions/printings)
     other_printings = session.query(CardDetails).filter(
         CardDetails.name == card_details.name,
         CardDetails.id != card_details.id  # Exclude the current card itself
-    ).all()
+    ).limit(9).all()
 
     return render_template(
         'card.html',
