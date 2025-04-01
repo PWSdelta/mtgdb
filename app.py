@@ -546,11 +546,19 @@ def get_card(card_id):
 
 
 
-@app.route('/')
+@app.route('/', methods=['GET', 'HEAD'])
 def hello_world():
     try:
         hero_card = fetch_random_card_from_db()
-        update_normal_price(hero_card.id)
+
+        if request.headers.get('User-Agent') == 'Go-http-client/1.1':
+            print("This is definitely a Render health check")
+            update_normal_price(hero_card.id)
+
+        if request.method == 'HEAD':
+            update_normal_price(hero_card.id)
+        else:
+            update_normal_price(hero_card.id)
 
         expensive_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)  # Exclude rows where normal_price is NULL
