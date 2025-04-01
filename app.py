@@ -178,25 +178,34 @@ def update_product_price(product_id):
 
     # Fetch product data
     try:
-        # product = session.query(Products).get(product_id)
-
-        product = (session.query(Products)
+        # Select only the specific columns you need
+        product = (session.query(
+            Products.productId,
+            Products.name,
+            Products.cleanName,
+            Products.marketPrice,
+            Products.lowPrice,
+            Products.midPrice,
+            Products.directLowPrice,
+            Products.deltaPrice,
+            CardDetails.id.label('card_detail_id'),  # Essential join field
+        )
                    .outerjoin(CardDetails, CardDetails.tcgplayer_id == Products.productId)
-                   .options(orm.contains_eager(Products.card_details))
                    .filter(Products.productId == product_id)
                    .first())
 
         if not product:
             raise ValueError(f"No product found with product_id: {product_id}")
 
+
         print(f"Product found: {product.name} | productId: {product.productId}")
 
         # Debug: Print all price fields and their raw values
         print("Raw price values from database:")
-        print(f"  lowPrice (type: {type(product.lowPrice)}): {product.lowPrice!r}")
-        print(f"  midPrice (type: {type(product.midPrice)}): {product.midPrice!r}")
-        print(f"  marketPrice (type: {type(product.marketPrice)}): {product.marketPrice!r}")
-        print(f"  directLowPrice (type: {type(product.directLowPrice)}): {product.directLowPrice!r}")
+        print(f"  lowPrice: {product.lowPrice!r}")
+        print(f"  midPrice): {product.midPrice!r}")
+        print(f"  marketPrice): {product.marketPrice!r}")
+        print(f"  directLowPrice: {product.directLowPrice!r}")
         print(f"  current deltaPrice: {product.deltaPrice!r}")
 
         # Check if this product is also a MTG card
@@ -311,6 +320,40 @@ def update_product_price(product_id):
     print("==== Price update complete ====\n")
     return product
 
+
+def update_random_entities():
+    """Updates prices for a random card and a random product."""
+    results = {}
+
+    try:
+        # Get and update a random product
+        random_product = session.query(Products).order_by(func.random()).first()
+        if random_product is not None:
+            update_product_price(random_product.productId)
+            results['product'] = {
+                'id': random_product.productId,
+                'name': random_product.cleanName,
+                'status': 'updated'
+            }
+        else:
+            results['product'] = {'status': 'no products available'}
+
+        # Get and update a random card
+        random_card = session.query(CardDetails).order_by(func.random()).first()
+        if random_card is not None:
+            update_normal_price(random_card.id)
+            results['card'] = {
+                'id': random_card.id,
+                'name': random_card.name,
+                'status': 'updated'
+            }
+        else:
+            results['card'] = {'status': 'no cards available'}
+
+    except Exception as e:
+        results['error'] = str(e)
+
+    return results
 
 
 
@@ -743,15 +786,9 @@ def hello_world():
         if hero_card is not None:
             update_normal_price(hero_card.id)
 
-        # Get random product if possible
-        random_product = session.query(Products).order_by(func.random()).first()
-        if random_product is not None:
-            update_product_price(random_product.productId)
+        update_random_entities()
 
-        if request.method == 'HEAD':
-            random_product = session.query(Products).order_by(func.random()).first()
-            if random_product is not None:
-                update_product_price(random_product.productId)
+
 
         expensive_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
