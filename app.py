@@ -722,19 +722,15 @@ def get_card(card_id):
 def hello_world():
     try:
         hero_card = fetch_random_card_from_db()
+        update_normal_price(hero_card.id)
 
-        if request.headers.get('User-Agent') == 'Go-http-client/1.1':
-            print("This is definitely a Render health check")
-            update_normal_price(hero_card.id)
+        random_product = session.query(Products).order_by(func.random()).first()
+        update_product_price(random_product.productId)
 
         if request.method == 'HEAD':
-            update_normal_price(hero_card.id)
             random_product = session.query(Products).order_by(func.random()).first()
             update_product_price(random_product.productId)
-        else:
-            update_normal_price(hero_card.id)
-            random_product = session.query(Products).order_by(func.random()).first()
-            update_product_price(random_product.productId)
+
 
         expensive_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
