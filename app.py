@@ -581,6 +581,5 @@ def hello_world():
 
 
 if __name__ == '__main__':
-    # Get port from environment variable or use 5000 as default
     app.run()
 
