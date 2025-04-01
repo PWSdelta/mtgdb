@@ -6,6 +6,7 @@ import numpy as np
 from dotenv import load_dotenv
 from flask import Flask
 from flask import request, render_template
+from flask_caching.jinja2ext import CacheExtension
 from sqlalchemy import create_engine, Table
 from sqlalchemy import inspect
 from sqlalchemy.ext.automap import automap_base
@@ -14,25 +15,34 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
 from flask_cors import CORS
 from flask_caching import Cache
+from jinja2 import ext
+from jinja2.ext import LoopControlExtension
+
 
 
 app = Flask(__name__)
-CORS(app)
 
+CORS(app)
 load_dotenv()
 
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+
 # Cache configuration
-app.config['CACHE_TYPE'] = 'SimpleCache'  # For production, consider 'redis' or 'memcached'
-app.config['CACHE_DEFAULT_TIMEOUT'] = 300
+app.config['CACHE_TYPE'] = 'SimpleCache'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 3600
 cache = Cache(app)
-# Enable Jinja2 fragment caching
-app.jinja_env.add_extension('jinja2.ext.loopcontrols')
-app.jinja_env.add_extension('flask_caching.jinja2ext.FragmentCacheExtension')
+
+# Add the extension from flask_caching
+app.jinja_env.add_extension(CacheExtension)
 app.jinja_env.fragment_cache = cache
+app.jinja_env.add_extension(LoopControlExtension)
+
+
+
+
 
 
 
@@ -77,6 +87,7 @@ def fetch_random_card_from_db():
         random_card = (session.query(CardDetails)
                        .order_by(func.random())
                        .first())
+
         if random_card:
             print(f"Retrieved random card: {random_card.id}, {random_card.name}")
             return random_card
@@ -329,7 +340,6 @@ def prepare_product_data(raw_product):
 
 
 
-
 @app.route('/products/category/<category_id>', methods=['GET'])
 def products_by_category(category_id):
     # Convert `category_id` to a string before using in a query
@@ -432,11 +442,11 @@ def random_card_view():
     if not card_details:
         return "Card not found", 404
 
-    # Query all cards by the same artist
     cards_by_artist = session.query(CardDetails).filter(
-        CardDetails.artist == card_details.artist,
-        CardDetails.id != card_details.id  # Exclude the current card itself
-    ).limit(9).all()
+        CardDetails.artist == card_details.artist,  # Same artist
+        CardDetails.id != card_details.id,  # Exclude the current card
+        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+    ).limit(9).all()  # Limit to 6 results
 
     # Query other printings (same card with different versions/printings)
     other_printings = session.query(CardDetails).filter(
