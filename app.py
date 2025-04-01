@@ -165,6 +165,89 @@ def update_normal_price(card_id):
     return card
 
 
+def update_product_price(product_id):
+    print(f"update_product_price called for product_id: {product_id}")
+
+    # Fetch product data
+    try:
+        product = session.query(Products).filter(Products.productId == product_id).first()
+        if not product:
+            raise ValueError(f"No product found with product_id: {product_id}")
+
+        print(f"Product found: {product.name} | productId: {product.productId}")
+
+        # Check if this product is also a MTG card by looking for tcgplayer_id match
+        card = None
+        if product.productId:  # Make sure productId is not None
+            card = session.query(CardDetails).filter(CardDetails.tcgplayer_id == product.productId).first()
+        is_mtg_card = card is not None
+
+    except Exception as e:
+        print(f"Error fetching product: {e}")
+        return None
+
+    # Calculate normal price
+    try:
+        # Initialize prices
+        prices_to_consider = []
+
+        # Add product table prices
+        low_price = float(product.lowPrice or 0)
+        mid_price = float(product.midPrice or 0)
+        market_price = float(product.marketPrice or 0)
+        direct_low_price = float(product.directLowPrice or 0)
+
+        prices_to_consider.extend([low_price, mid_price, market_price, direct_low_price])
+
+        # If it's an MTG card, also add the card-specific prices
+        if is_mtg_card and card.prices:
+            usd_price = float(card.prices.get('usd', 0) or 0)
+            eur_price = float(card.prices.get('eur', 0) or 0)
+            prices_to_consider.extend([usd_price, eur_price])
+
+        # Filter out zero or negative prices
+        valid_prices = [price for price in prices_to_consider if price > 0]
+
+        if not valid_prices:
+            raise ValueError(f"No valid prices found for product_id: {product_id}")
+
+        mean_price = float(np.mean(valid_prices))
+        print(f"Calculated mean price for product {product.name}: {mean_price}")
+
+    except Exception as e:
+        print(f"Error calculating product price: {e}")
+        return None
+
+    # Update the database
+    try:
+        print(f"Updating price for product_id {product.productId}")
+
+        # If it's a MTG card, update the normal_price in card_details
+        if is_mtg_card:
+            print(f"This product is linked to MTG card: {card.name} (UUID: {card.id})")
+            print(f"Old normal_price (card): {card.normal_price}")
+            card.normal_price = round(mean_price, 2)
+            print(f"New normal_price (card): {card.normal_price}")
+
+        # Always update the price in the products table
+        print(f"Old price (product): {product.deltaprice}")
+        product.price = round(mean_price, 2)
+        print(f"New price (product): {product.deltaprice}")
+
+        session.commit()
+        print(f"Successfully updated price for product_id {product.productId}")
+
+    except Exception as e:
+        print(f"Error during database update, rolling back: {e}")
+        session.rollback()
+        return None
+
+    # Return the updated product
+    return product
+
+
+
+
 def find_product_by_id_or_random(product_id=None, category_id=None):
     session = Session()
 
@@ -393,9 +476,6 @@ def sitemap(sitemap_id):
     return Response(stream_with_context(generate()), mimetype='text/xml')
 
 
-
-
-
 @app.route('/products/category/<category_id>', methods=['GET'])
 def products_by_category(category_id):
     # Convert `category_id` to a string before using in a query
@@ -415,6 +495,7 @@ def get_product(product_id):
 
     if product:
         product_data = prettify_keys(product)
+        update_product_price(product_id)
         return render_template('product_display.html', product=product_data)
     else:
         # Handle the case where there are no products in the database
@@ -429,6 +510,7 @@ def random_product_view():
     random_product = session.query(Products).order_by(func.random()).first()
 
     if random_product:
+        update_product_price(random_product.productId)
         product_data = prettify_keys(random_product)
 
         return render_template('product_display.html', product=product_data)
