@@ -1,11 +1,15 @@
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 import re
 import math
 import os
 import numpy as np
 from dotenv import load_dotenv
 from flask import Flask
-from flask import request, render_template
+from flask import request, render_template, Response, stream_with_context
+
+
+from flask_sitemap import Sitemap
+
 from flask_caching.jinja2ext import CacheExtension
 from sqlalchemy import create_engine, Table
 from sqlalchemy import inspect
@@ -21,6 +25,8 @@ from jinja2.ext import LoopControlExtension
 
 
 app = Flask(__name__)
+ext = Sitemap(app)
+
 
 CORS(app)
 load_dotenv()
@@ -164,110 +170,6 @@ def update_normal_price(card_id):
     return card
 
 
-# def insert_spot_price(Session, card, spot_price):
-#     """
-#     Inserts a new spot price into the database for the given CardDetails instance.
-#
-#     Args:
-#         Session: An instance of the session factory created by sessionmaker.
-#         card: An instance of the CardDetails automapped class.
-#         spot_price (float): The new spot price to log.
-#
-#     Returns:
-#         str: A message indicating success or why logging was skipped.
-#     """
-#     # Ensure the card instance is valid
-#     if not card:
-#         raise ValueError("A valid CardDetails instance must be provided.")
-#
-#     # Ensure the spot_price is a valid number
-#     if spot_price is None or spot_price < 0:
-#         raise ValueError("A valid, positive spot_price must be provided.")
-#
-#     # Create a session instance
-#     session = Session()  # Initialize the session
-#     try:
-#         # Extract details from the card instance
-#         card_id = card.id
-#         tcgplayer_id = card.tcgplayer_id
-#
-#         # Query for the most recent spot price for this card
-#         last_spot_price = session.query(SpotPrices).filter(
-#             (SpotPrices.card_id == card_id) | (SpotPrices.tcgplayer_id == tcgplayer_id)
-#         ).order_by(SpotPrices.date_created.desc()).first()
-#
-#         # Check if the most recent spot price was added within 12 hours
-#         if last_spot_price and last_spot_price.date_created > datetime.utcnow() - timedelta(hours=12):
-#             return f"No new spot price logged. Last price added less than 12 hours ago (at {last_spot_price.date_created})."
-#
-#         # Create a new spot price entry
-#         new_spot_price = SpotPrices(
-#             card_id=card_id,
-#             tcgplayer_id=tcgplayer_id,
-#             spot_price=spot_price,
-#             date_created=datetime.utcnow()
-#         )
-#
-#         # Add the new spot price to the database and commit
-#         session.add(new_spot_price)
-#         session.commit()
-#         print(f"New spot price logged for card_id: {card_id}, tcgplayer_id: {tcgplayer_id}, with price: {spot_price}.")
-#
-#         return f"New spot price logged for card_id: {card_id}, tcgplayer_id: {tcgplayer_id}, with price: {spot_price}."
-#
-#     except Exception as e:
-#         # Roll back the transaction on error
-#         session.rollback()
-#         raise RuntimeError(f"Error inserting spot price: {e}")
-#
-#     finally:
-#         session.close()
-
-
-# def update_all_spot_prices(Session, update_normal_price, insert_spot_price):
-#     """
-#     Iterates over all cards in the `card_details` table, updating the normal price and inserting spot prices if necessary.
-#
-#     Args:
-#         Session: The SQLAlchemy session factory.
-#         update_normal_price (func): A function to update the normal price for a card.
-#         insert_spot_price (func): A function to insert spot prices for a card if needed.
-#
-#     """
-#     # Create a new session
-#     session = Session()
-#
-#     try:
-#         # Query all cards from the card_details table
-#         card_details = session.query(CardDetails).all()
-#
-#         print(f"Found {len(card_details)} cards to process...")
-#
-#         for card in card_details:
-#             try:
-#                 # Step 2: Update the normal price for the card
-#                 updated_card = update_normal_price(card.id)  # Assuming this function modifies the card in-place
-#                 print(f"Updated normal price for card_id: {card.id}")
-#
-#                 # Step 3: Insert a spot price, if needed
-#                 spot_price_message = insert_spot_price(Session, card, updated_card.normal_price)
-#                 print(f"Spot price update result for card_id {card.id}: {spot_price_message}")
-#
-#             except Exception as e:
-#                 print(f"Error processing card_id {card}: {e}")
-#                 session.rollback()  # Rollback if there's an issue updating or inserting
-#
-#         print("Processing complete!")
-#
-#     except Exception as e:
-#         print(f"Error processing cards: {e}")
-#         session.rollback()  # Rollback on general errors
-#
-#     finally:
-#         # Ensure the session is closed
-#         session.close()
-
-
 def find_product_by_id_or_random(product_id=None, category_id=None):
     session = Session()
 
@@ -336,6 +238,165 @@ def prepare_product_data(raw_product):
     return ordered_data
 
 
+def generate_sitemap_files():
+    """Generate static sitemap files"""
+    base_url = "https://pwsdelta.com"  # Replace with your actual domain
+    output_dir = "static/sitemaps"  # Directory to store sitemap files
+
+    # Create directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get total URLs count (replace with your actual query)
+    total_cards = session.query(func.count(CardDetails.id)).scalar()
+
+    # URLs per sitemap (reduced from 50000)
+    urls_per_sitemap = 10000
+    num_sitemaps = math.ceil(total_cards / urls_per_sitemap)
+
+    # Generate sitemap index
+    with open(f"{output_dir}/sitemap.xml", "w") as index_file:
+        index_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        index_file.write('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+        for i in range(num_sitemaps):
+            index_file.write('  <sitemap>\n')
+            index_file.write(f'    <loc>{base_url}/static/sitemaps/sitemap-{i + 1}.xml</loc>\n')
+            index_file.write(f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n')
+            index_file.write('  </sitemap>\n')
+
+        index_file.write('</sitemapindex>')
+
+    # Generate individual sitemap files
+    for sitemap_id in range(1, num_sitemaps + 1):
+        print(f"Generating sitemap {sitemap_id}/{num_sitemaps}")
+
+        with open(f"{output_dir}/sitemap-{sitemap_id}.xml", "w") as sitemap_file:
+            sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+            offset = (sitemap_id - 1) * urls_per_sitemap
+
+            # Replace with your actual database query
+            # Fetch URLs in batches to avoid memory issues
+            batch_size = 1000
+            for batch_offset in range(0, urls_per_sitemap, batch_size):
+                # Query to get the actual card IDs
+                cards = session.query(CardDetails.id).order_by(CardDetails.id).offset(offset + batch_offset).limit(
+                    batch_size).all()
+
+                # No cards left in this batch
+                if not cards:
+                    break
+
+                # Use the actual card IDs from the database
+                for card in cards:
+                    # Get the ID value from the database query result
+                    card_id = card.id if hasattr(card, 'id') else card[0]
+
+                    # Use the actual card ID in the URL
+                    url_path = f"card/{card_id}"
+
+                    sitemap_file.write('  <url>\n')
+                    sitemap_file.write(f'    <loc>{base_url}/{url_path}</loc>\n')
+                    sitemap_file.write(f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n')
+                    sitemap_file.write('  </url>\n')
+
+            sitemap_file.write('</urlset>')
+
+
+@app.route('/asdf')
+def asdf():
+    generate_sitemap_files()
+
+    return 200
+
+
+
+@app.route('/sitemap.xml')
+def sitemap_index():
+    base_url = "https://pwsdelta.com"  # Change to your actual domain
+
+    # Get the actual count of cards
+    total_cards = session.query(func.count(CardDetails.id)).scalar()
+
+    urls_per_sitemap = 10000  # Reduced from 50000 for better performance
+    num_sitemaps = math.ceil(total_cards / urls_per_sitemap)
+
+    sitemap_index = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    sitemap_index += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+    for i in range(num_sitemaps):
+        sitemap_index += '  <sitemap>\n'
+        sitemap_index += f'    <loc>{base_url}/sitemap-{i + 1}.xml</loc>\n'
+        sitemap_index += f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
+        sitemap_index += '  </sitemap>\n'
+
+    sitemap_index += '</sitemapindex>'
+
+    return Response(sitemap_index, mimetype='text/xml')
+
+
+@app.route('/sitemap-<int:sitemap_id>.xml')
+def sitemap(sitemap_id):
+    if sitemap_id < 1:
+        return "Invalid sitemap ID", 404
+
+    base_url = "https://pwsdelta.com"  # Change to your domain
+
+    def generate():
+        yield '<?xml version="1.0" encoding="UTF-8"?>\n'
+        yield '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+        urls_per_sitemap = 10000
+        offset = (sitemap_id - 1) * urls_per_sitemap
+        batch_size = 1000
+
+        try:
+            # Debug the first few results to see what we're dealing with
+            first_batch = session.query(CardDetails.id) \
+                .order_by(CardDetails.id) \
+                .offset(offset) \
+                .limit(5) \
+                .all()
+
+            print("Debug - First 5 card IDs in batch:")
+            for card in first_batch:
+                print(
+                    f"Card ID: {card.id if hasattr(card, 'id') else card[0]}, Type: {type(card.id if hasattr(card, 'id') else card[0])}")
+
+            # Now process the full batch
+            for batch_offset in range(0, urls_per_sitemap, batch_size):
+                cards = session.query(CardDetails.id) \
+                    .order_by(CardDetails.id) \
+                    .offset(offset + batch_offset) \
+                    .limit(batch_size) \
+                    .all()
+
+                if not cards:
+                    break
+
+                for card in cards:
+                    # Access the UUID correctly - might be a tuple or an object
+                    card_id = card.id if hasattr(card, 'id') else card[0]
+
+                    # Use the correct format: /card/UUID
+                    yield '  <url>\n'
+                    yield f'    <loc>{base_url}/card/{card_id}</loc>\n'
+                    yield f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
+                    yield '  </url>\n'
+
+        except Exception as e:
+            print(f"Error generating sitemap: {str(e)}")
+            # Add a fallback entry
+            yield '  <url>\n'
+            yield f'    <loc>{base_url}/</loc>\n'
+            yield f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
+            yield '  </url>\n'
+
+        yield '</urlset>'
+
+    return Response(stream_with_context(generate()), mimetype='text/xml')
+
 
 
 
@@ -350,7 +411,6 @@ def products_by_category(category_id):
 
     # Render the results on a template or return JSON (based on your needs)
     return render_template('products_by_category.html', products=products)
-
 
 
 @app.route('/product/<product_id>', methods=['GET'])
@@ -403,23 +463,6 @@ def set_details(set_code):
         )
     finally:
         session.close()
-
-
-# @app.route('/process_cards', methods=['GET'])
-# def process_cards():
-#     """
-#     Flask route to process all cards in the card_details table.
-#     """
-#     try:
-#         # Call the mass processing method
-#         update_all_spot_prices(Session, update_normal_price, insert_spot_price)
-#
-#         # Respond with success
-#         return "it worked!"
-#
-#     except Exception as e:
-#         # Catch any errors during processing
-#         return f"error: {{ e }}"
 
 
 @app.route('/ask', methods=['GET'])
@@ -577,7 +620,6 @@ def hello_world():
         session.rollback()  # Reset the session after exception
     finally:
         session.close()  # Ensure session is closed
-
 
 
 if __name__ == '__main__':
