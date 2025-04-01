@@ -47,15 +47,10 @@ app.jinja_env.fragment_cache = cache
 app.jinja_env.add_extension(LoopControlExtension)
 
 
-
-
-
-
-
-
-
 if os.getenv("APP_ENVIRONMENT", "").startswith("DEV"):
     engine = create_engine(os.environ.get('LOCAL_DB_URL'))
+elif os.getenv("APP_ENVIRONMENT", "").startswith("DEVVV"):
+    engine = create_engine(os.environ.get('RW_DATABASE_URL'))
 else:
     engine = create_engine(os.environ.get('DATABASE_URL'))
 
@@ -303,12 +298,12 @@ def generate_sitemap_files():
 
             sitemap_file.write('</urlset>')
 
-
-@app.route('/asdf')
-def asdf():
-    generate_sitemap_files()
-
-    return 200
+#
+# @app.route('/asdf')
+# def asdf():
+#     generate_sitemap_files()
+#
+#     return 200
 
 
 

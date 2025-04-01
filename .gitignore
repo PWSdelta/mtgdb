@@ -74,3 +74,4 @@ local_settings.py
 # migrations/
 
 .env
+downloads/

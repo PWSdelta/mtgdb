@@ -92,14 +92,15 @@ def auto_map_and_insert(file_path, table_name, connection):
 
 
 def main():
-    # Database connection details
+
     db_params = {
-        "dbname": "mtgdb",
-        "user": "postgres",
-        "password": "asdfghjkl",
-        "host": "localhost",
+        "dbname": os.getenv("DB_NAME", "mtgdb"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.getenv("DB_PASSWORD"),
+        "host": os.getenv("DB_HOST", "localhost"),
         "port": 5432
     }
+
 
     # Folder containing the CSV files
     csv_folder = "downloads/"
