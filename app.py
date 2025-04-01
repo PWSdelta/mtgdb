@@ -579,6 +579,9 @@ def hello_world():
         session.close()  # Ensure session is closed
 
 
+
 if __name__ == '__main__':
-    app.run()
+    # Get port from environment variable or use 5000 as default
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
 
