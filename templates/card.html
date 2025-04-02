@@ -108,7 +108,7 @@
     <h3 class="text-center">More by <a href="/artists/{{ card.artist }}">{{ card.artist }}</a></h3>
 
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-    {% cache 3600, 'artist_cards', card.artist %}
+    {% cache 300, 'artist_cards', card.artist %}
         {% for card in cards_by_artist %}
           {% include "_card_component.html" %}
         {% endfor %}
