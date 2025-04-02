@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ card.name }} - {{ card.set_name }}{% endblock %}
+{% block title %}{{ card.name }} | {{ card.set_name }} Magic: The Gathering Card | PWSDELTA{% endblock %}
+
 {% block content %}
 
 <div class="container">
@@ -9,10 +10,11 @@
 <p><a href="/random">Random</a></p>
 <p><a href="https://www.tcgplayer.com/product/{{ card.tcgplayer_id }}" target="_blank">TCGPlayer store</a></p>
 
-
+<article class="card-details">
 <div class="row">
     <div class="col">
-        <img src="{{ card.image_uris.normal }}" alt="{{ card.name }}">
+        <img src="{{ card.image_uris.normal }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
+
     </div>
     <div class="col">
         {% if card.rarity %}
@@ -100,7 +102,7 @@
 </div>
 
 
-
+</article>
 
 
 {% if cards_by_artist %}
@@ -161,4 +163,25 @@
 </div>
 
 {% endblock %}
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "{{ card.name }}",
+  "image": "{{ card.image_uris.large }}",
+  "description": "{{ card.oracle_text | striptags }}",
+  "brand": {
+    "@type": "Brand",
+    "name": "Magic: The Gathering"
+  },
+  "offers": {
+    "@type": "Offer",
+    "url": "{{ request.url }}",
+    "priceCurrency": "USD",
+    "price": "{{ card.normal_price if card.normal_price is not none and card.normal_price is float else '0.00' }}",
+    "availability": "https://schema.org/InStock"
+  }
+}
+</script>
 

@@ -517,17 +517,11 @@ def update_scryfall_prices(card_details):
 
     return True
 
-    # except Exception as e:
-    #     # Rollback on error
-    #     session.rollback()
-    #     print(f"Error updating price for card {card_details.id}: {e}")
-    #     return False
 
+# Generate slugs from card names
+def generate_slug(card_name):
+    return card_name.lower().replace(' ', '-').replace(',', '').replace("'", '')
 
-# Example usage:
-# if update_card_price(card_details):
-#     print("Price updated successfully")
-#     # The app can now use card_details.prices as needed
 
 
 
@@ -756,7 +750,7 @@ def art_gallery():
 
 
 @app.route('/card/<card_id>', methods=['GET'])
-def get_card(card_id):
+def card_legacy(card_id):
     # Fetch the card details
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
 
@@ -802,6 +796,52 @@ def get_card(card_id):
     )
 
 
+@app.route('/card/<card_id>/<card_slug>')
+def card_detail(card_id, card_slug):
+    # Fetch the card details
+    card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
+
+    # Only update price if we have a hero card
+    if card is not None:
+        update_scryfall_prices(card)
+        update_normal_price(card.id)
+        record_daily_price(card)
+
+    if not card:
+        return "Card not found", 404
+
+    # Query for cards by the same artist
+    cards_by_artist = session.query(CardDetails).filter(
+        CardDetails.artist == card.artist,  # Same artist
+        CardDetails.id != card_id,  # Exclude the current card
+        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+    ).limit(9).all()  # Limit to 6 results
+
+    # Query for other printings of the same card
+    other_printings = session.query(CardDetails).filter(
+        CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
+        CardDetails.id != card_id,  # Exclude the current card
+        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+    ).limit(9).all()  # Limit to 6 results
+
+    # Access the `all_parts` JSONB field
+    all_parts = card.all_parts or []  # Default to an empty list if None
+
+    # Extract related IDs from the `all_parts` JSON, assuming it's a list of dicts
+    related_ids = [part["id"] for part in all_parts if "id" in part]
+
+    # Query related cards from the database using the extracted IDs
+    related_cards = session.query(CardDetails).filter(CardDetails.id.in_(related_ids)).all()
+
+    # Render the template with the data
+    return render_template(
+        'card.html',
+        card=card,
+        cards_by_artist=cards_by_artist,
+        other_printings=other_printings,
+        related_cards=related_cards
+    )
+
 
 @app.route('/', methods=['GET', 'HEAD'])
 def hello_world():
@@ -840,6 +880,15 @@ def hello_world():
         return render_template("error.html", error=str(e)), 500
     finally:
         session.close()
+
+
+@app.route('/robots.txt')
+def robots():
+    return Response("""
+        User-agent: *
+        Allow: /
+        Sitemap: https://pwsdelta.com/sitemap.xml
+        """, mimetype='text/plain')
 
 
 if __name__ == '__main__':
