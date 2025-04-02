@@ -819,13 +819,13 @@ def hello_world():
         expensive_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
         ).order_by(func.random()
-                   ).limit(15).all() or []  # Ensure it's at least an empty list
+                   ).limit(33).all() or []  # Ensure it's at least an empty list
 
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),
             CardDetails.normal_price >= 0
         ).order_by(func.random()
-                   ).limit(15).all() or []  # Ensure it's at least an empty list
+                   ).limit(33).all() or []  # Ensure it's at least an empty list
 
         # Render the page with whatever data we have
         return render_template(
