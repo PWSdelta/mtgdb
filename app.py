@@ -518,9 +518,9 @@ def update_scryfall_prices(card_details):
     return True
 
 
-# Generate slugs from card names
-def generate_slug(card_name):
-    return card_name.lower().replace(' ', '-').replace(',', '').replace("'", '')
+@app.template_filter('generate_slug')
+def generate_slug(text):
+    return text.lower().replace(' ', '-').replace(',', '').replace("'", '')
 
 
 
