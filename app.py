@@ -2,7 +2,6 @@ import math
 import os
 import re
 from datetime import datetime
-import rq
 import numpy as np
 from dotenv import load_dotenv
 from flask import Flask
@@ -14,7 +13,6 @@ from flask_sitemap import Sitemap
 from jinja2.ext import LoopControlExtension
 from sqlalchemy import create_engine
 from sqlalchemy import inspect
-from sqlalchemy import orm
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
@@ -27,7 +25,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("mtg_prices.log"),
         logging.StreamHandler()  # Also output to console
     ]
 )
