@@ -18,7 +18,19 @@ from sqlalchemy import orm
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm.sync import update
 from sqlalchemy.sql import func
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("mtg_prices.log"),
+        logging.StreamHandler()  # Also output to console
+    ]
+)
 
 app = Flask(__name__)
 ext = Sitemap(app)
@@ -173,152 +185,255 @@ def update_normal_price(card_id):
     return card
 
 
-def update_product_price(product_id):
-    print(f"\n==== update_product_price called for product_id: {product_id} ====")
+# def update_product_price_old(product_id):
+#     print(f"\n==== update_product_price called for product_id: {product_id} ====")
+#
+#     # Fetch product data
+#     try:
+#         # Select only the specific columns you need
+#         product = (session.query(
+#             Products.productId,
+#             Products.name,
+#             Products.cleanName,
+#             Products.marketPrice,
+#             Products.lowPrice,
+#             Products.midPrice,
+#             Products.directLowPrice,
+#             Products.deltaPrice,
+#             CardDetails.id.label('card_detail_id'),  # Essential join field
+#         )
+#                    .outerjoin(CardDetails, CardDetails.tcgplayer_id == Products.productId)
+#                    .filter(Products.productId == product_id)
+#                    .first())
+#
+#         if not product:
+#             raise ValueError(f"No product found with product_id: {product_id}")
+#
+#
+#         print(f"Product found: {product.name} | productId: {product.productId}")
+#
+#         # Debug: Print all price fields and their raw values
+#         print("Raw price values from database:")
+#         print(f"  lowPrice: {product.lowPrice!r}")
+#         print(f"  midPrice): {product.midPrice!r}")
+#         print(f"  marketPrice): {product.marketPrice!r}")
+#         print(f"  directLowPrice: {product.directLowPrice!r}")
+#         print(f"  current deltaPrice: {product.deltaPrice!r}")
+#
+#         # Check if this product is also a MTG card
+#         card = None
+#         if product.productId:
+#             card = session.query(CardDetails).filter(CardDetails.tcgplayer_id == product.productId).first()
+#         is_mtg_card = card is not None
+#
+#         if is_mtg_card:
+#             print(f"Product is also an MTG card: {card.name}")
+#             print(f"Card prices: {card.prices!r}")
+#
+#     except Exception as e:
+#         print(f"Error fetching product: {e}")
+#         return None
+#
+#     # Calculate price
+#     try:
+#         # Initialize prices
+#         prices_to_consider = []
+#
+#         # Improved handling of TEXT price values
+#         price_fields = {
+#             'lowPrice': product.lowPrice,
+#             'midPrice': product.midPrice,
+#             'marketPrice': product.marketPrice,
+#             'directLowPrice': product.directLowPrice
+#         }
+#
+#         print("Converting price values:")
+#         for field_name, value in price_fields.items():
+#             try:
+#                 # Handle different possible values: None, empty string, string, number
+#                 if value is None or value == '' or value == 'null':
+#                     converted_value = 0
+#                 else:
+#                     # Strip any non-numeric characters (like '$', ',') before converting
+#                     numeric_value = re.sub(r'[^\d.]', '', str(value))
+#                     converted_value = float(numeric_value) if numeric_value else 0
+#
+#                 print(f"  {field_name}: {value!r} -> {converted_value}")
+#
+#                 if converted_value > 0:
+#                     prices_to_consider.append(converted_value)
+#             except (ValueError, TypeError) as e:
+#                 print(f"  Error converting {field_name} ({value!r}): {e}")
+#
+#         # If it's an MTG card, handle card-specific prices
+#         if is_mtg_card and card.prices:
+#             card_prices = {
+#                 'usd': card.prices.get('usd', None),
+#                 'eur': card.prices.get('eur', None)
+#             }
+#
+#             for field_name, value in card_prices.items():
+#                 try:
+#                     if value is None or value == '' or value == 'null':
+#                         converted_value = 0
+#                     else:
+#                         # Strip any non-numeric characters before converting
+#                         numeric_value = re.sub(r'[^\d.]', '', str(value))
+#                         converted_value = float(numeric_value) if numeric_value else 0
+#
+#                     print(f"  card.{field_name}: {value!r} -> {converted_value}")
+#
+#                     if converted_value > 0:
+#                         prices_to_consider.append(converted_value)
+#                 except (ValueError, TypeError) as e:
+#                     print(f"  Error converting card.{field_name} ({value!r}): {e}")
+#
+#         print(f"Prices to consider: {prices_to_consider}")
+#
+#         if not prices_to_consider:
+#             print(f"WARNING: No valid prices found for product_id: {product_id}")
+#             return None
+#
+#         mean_price = float(np.mean(prices_to_consider))
+#         print(f"Calculated mean price for product {product.name}: {mean_price}")
+#
+#     except Exception as e:
+#         print(f"Error calculating product price: {e}")
+#         import traceback
+#         print(traceback.format_exc())
+#         return None
+#
+#     # Update the database
+#     try:
+#         # Format the mean_price as a string with 2 decimal places for storage in TEXT field
+#         formatted_price = f"{mean_price:.2f}"
+#
+#         print(f"Updating prices for product_id {product.productId}")
+#
+#         # If it's a MTG card, update the normal_price in card_details
+#         if is_mtg_card:
+#             print(f"Old normal_price (card): {card.normal_price}")
+#             card.normal_price = round(mean_price, 2)  # Assuming this is a numeric field
+#             print(f"New normal_price (card): {card.normal_price}")
+#
+#         # Update deltaPrice in the products table
+#         print(f"Old deltaPrice (product): {product.deltaPrice}")
+#         product.deltaPrice = formatted_price  # Store as TEXT since the field is TEXT
+#         print(f"New deltaPrice (product): {product.deltaPrice}")
+#
+#         session.commit()
+#         print(f"Successfully updated prices for product_id {product.productId}")
+#
+#     except Exception as e:
+#         print(f"Error during database update, rolling back: {e}")
+#         session.rollback()
+#         return None
+#
+#     print("==== Price update complete ====\n")
+#     return product
 
-    # Fetch product data
+def update_product_price(product_id=None, product=None):
+    """Main controller method that orchestrates the price update process"""
+    # Get product if ID is provided
+    product = get_product(product_id, product)
+    if not product:
+        return False
+
     try:
-        # Select only the specific columns you need
-        product = (session.query(
-            Products.productId,
-            Products.name,
-            Products.cleanName,
-            Products.marketPrice,
-            Products.lowPrice,
-            Products.midPrice,
-            Products.directLowPrice,
-            Products.deltaPrice,
-            CardDetails.id.label('card_detail_id'),  # Essential join field
-        )
-                   .outerjoin(CardDetails, CardDetails.tcgplayer_id == Products.productId)
-                   .filter(Products.productId == product_id)
-                   .first())
+        # Calculate new price
+        new_price = calculate_normal_price(product)
+        if not new_price:
+            return False
 
-        if not product:
-            raise ValueError(f"No product found with product_id: {product_id}")
-
-
-        print(f"Product found: {product.name} | productId: {product.productId}")
-
-        # Debug: Print all price fields and their raw values
-        print("Raw price values from database:")
-        print(f"  lowPrice: {product.lowPrice!r}")
-        print(f"  midPrice): {product.midPrice!r}")
-        print(f"  marketPrice): {product.marketPrice!r}")
-        print(f"  directLowPrice: {product.directLowPrice!r}")
-        print(f"  current deltaPrice: {product.deltaPrice!r}")
-
-        # Check if this product is also a MTG card
-        card = None
-        if product.productId:
-            card = session.query(CardDetails).filter(CardDetails.tcgplayer_id == product.productId).first()
-        is_mtg_card = card is not None
-
-        if is_mtg_card:
-            print(f"Product is also an MTG card: {card.name}")
-            print(f"Card prices: {card.prices!r}")
+        # Update in database
+        if save_product_price(product, new_price):
+            return True
+        return False
 
     except Exception as e:
-        print(f"Error fetching product: {e}")
-        return None
-
-    # Calculate price
-    try:
-        # Initialize prices
-        prices_to_consider = []
-
-        # Improved handling of TEXT price values
-        price_fields = {
-            'lowPrice': product.lowPrice,
-            'midPrice': product.midPrice,
-            'marketPrice': product.marketPrice,
-            'directLowPrice': product.directLowPrice
-        }
-
-        print("Converting price values:")
-        for field_name, value in price_fields.items():
-            try:
-                # Handle different possible values: None, empty string, string, number
-                if value is None or value == '' or value == 'null':
-                    converted_value = 0
-                else:
-                    # Strip any non-numeric characters (like '$', ',') before converting
-                    numeric_value = re.sub(r'[^\d.]', '', str(value))
-                    converted_value = float(numeric_value) if numeric_value else 0
-
-                print(f"  {field_name}: {value!r} -> {converted_value}")
-
-                if converted_value > 0:
-                    prices_to_consider.append(converted_value)
-            except (ValueError, TypeError) as e:
-                print(f"  Error converting {field_name} ({value!r}): {e}")
-
-        # If it's an MTG card, handle card-specific prices
-        if is_mtg_card and card.prices:
-            card_prices = {
-                'usd': card.prices.get('usd', None),
-                'eur': card.prices.get('eur', None)
-            }
-
-            for field_name, value in card_prices.items():
-                try:
-                    if value is None or value == '' or value == 'null':
-                        converted_value = 0
-                    else:
-                        # Strip any non-numeric characters before converting
-                        numeric_value = re.sub(r'[^\d.]', '', str(value))
-                        converted_value = float(numeric_value) if numeric_value else 0
-
-                    print(f"  card.{field_name}: {value!r} -> {converted_value}")
-
-                    if converted_value > 0:
-                        prices_to_consider.append(converted_value)
-                except (ValueError, TypeError) as e:
-                    print(f"  Error converting card.{field_name} ({value!r}): {e}")
-
-        print(f"Prices to consider: {prices_to_consider}")
-
-        if not prices_to_consider:
-            print(f"WARNING: No valid prices found for product_id: {product_id}")
-            return None
-
-        mean_price = float(np.mean(prices_to_consider))
-        print(f"Calculated mean price for product {product.name}: {mean_price}")
-
-    except Exception as e:
-        print(f"Error calculating product price: {e}")
-        import traceback
-        print(traceback.format_exc())
-        return None
-
-    # Update the database
-    try:
-        # Format the mean_price as a string with 2 decimal places for storage in TEXT field
-        formatted_price = f"{mean_price:.2f}"
-
-        print(f"Updating prices for product_id {product.productId}")
-
-        # If it's a MTG card, update the normal_price in card_details
-        if is_mtg_card:
-            print(f"Old normal_price (card): {card.normal_price}")
-            card.normal_price = round(mean_price, 2)  # Assuming this is a numeric field
-            print(f"New normal_price (card): {card.normal_price}")
-
-        # Update deltaPrice in the products table
-        print(f"Old deltaPrice (product): {product.deltaPrice}")
-        product.deltaPrice = formatted_price  # Store as TEXT since the field is TEXT
-        print(f"New deltaPrice (product): {product.deltaPrice}")
-
-        session.commit()
-        print(f"Successfully updated prices for product_id {product.productId}")
-
-    except Exception as e:
-        print(f"Error during database update, rolling back: {e}")
         session.rollback()
+        print(f"Error during product price update: {e}")
+        return False
+
+
+def get_product(product_id=None, product=None):
+    """Get product by ID or return provided product"""
+    if product_id and not product:
+        product = session.get(Products, product_id)
+        if not product:
+            print(f"No product found with ID {product_id}")
+            return None
+    return product
+
+
+def calculate_normal_price(product):
+    """Calculate normalized price from various sources"""
+    # Gather price sources
+    prices_to_consider = []
+    # Add your actual price sources here
+    # Example: prices_to_consider.append(product.tcgplayer_price) if product.tcgplayer_price else None
+
+    if not prices_to_consider:
+        print(f"No valid prices found for product {product.name}")
         return None
 
-    print("==== Price update complete ====\n")
-    return product
+    # Calculate with your standard method
+    return float(np.mean(prices_to_consider))
+
+
+def save_product_price(product, new_price):
+    """Save the calculated price to database"""
+    try:
+        # Update database directly
+        session.execute(
+            update(Products)
+            .where(Products.productId == product.productId)
+            .values(normalPrice=new_price)
+        )
+        session.commit()
+
+        # Refresh product object
+        session.refresh(product)
+        print(f"Updated normalPrice to {new_price} for product {product.productId}")
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Database update failed: {e}")
+        return False
+
+
+def record_daily_price(card_detail):
+    """
+    Records the card's normal_price in the spot_prices table.
+
+    Args:
+        card_detail: The CardDetail object containing the normal_price
+    """
+    try:
+        from datetime import datetime
+
+        # Skip if normal_price is None or 0
+        if not card_detail.normal_price:
+            print(f"No normal_price available for card {card_detail.id}")
+            return False
+
+        # Create a new spot price record
+        new_spot_price = SpotPrices(
+            card_id=card_detail.id,
+            price=float(card_detail.normal_price),
+            date=datetime.now()
+        )
+
+        # Add to session and commit
+        session.add(new_spot_price)
+        session.commit()
+        print(f"Recorded spot price {card_detail.normal_price} for card {card_detail.id}")
+        return True
+    except Exception as e:
+        session.rollback()
+        print(f"Failed to record spot price: {e}")
+        return False
+
 
 
 def update_random_entities():
@@ -354,8 +469,6 @@ def update_random_entities():
         results['error'] = str(e)
 
     return results
-
-
 
 
 def find_product_by_id_or_random(product_id=None, category_id=None):
@@ -739,6 +852,7 @@ def get_card(card_id):
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
     update_normal_price(card_id)
 
+
     if not card:
         return "Card not found", 404
 
@@ -785,6 +899,7 @@ def hello_world():
         # Only update price if we have a hero card
         if hero_card is not None:
             update_normal_price(hero_card.id)
+            record_daily_price(hero_card)
 
         update_random_entities()
 
