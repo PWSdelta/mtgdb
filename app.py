@@ -2,7 +2,7 @@ import math
 import os
 import re
 from datetime import datetime
-
+import rq
 import numpy as np
 from dotenv import load_dotenv
 from flask import Flask

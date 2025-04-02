@@ -55,19 +55,13 @@ def auto_map_and_insert(file_path, table_name, connection):
 
         # Step 5: Align DataFrame columns with the database table, excluding `id`
         if "id" in df.columns:
-            df = df.drop(columns=["id"])  # Drop `id` if it somehow exists
+            df = df.drop(columns=["id"])
 
-        for col in existing_columns:
-            if col != "id" and col not in df.columns:  # Exclude `id`
-                # print(f"Missing column '{col}' in the file. Filling with `None`...")
-                df[col] = None
+        # Get all needed columns except 'id'
+        needed_columns = [col for col in existing_columns if col != "id"]
 
-        # Align DataFrame columns with table schema excluding `id`
-        aligned_df = df[[col for col in existing_columns if col != "id"]]
-
-        # Debugging: Print first few rows of the aligned DataFrame
-        # print(f"Aligned Columns: {aligned_df.columns.tolist()}")
-        # print(f"Data preview:\n{aligned_df.head()}")
+        # Use reindex to add missing columns all at once
+        aligned_df = df.reindex(columns=needed_columns, fill_value=None)
 
         # Step 6: Prepare and execute the insertion query
         column_names = ', '.join([f'"{col}"' for col in aligned_df.columns])
