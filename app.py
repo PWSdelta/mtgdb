@@ -404,28 +404,46 @@ def save_product_price(product, new_price):
 
 def record_daily_price(card_detail):
     """
-    Records the card's normal_price in the spot_prices table.
+    Records the card's normal_price in the spot_prices table using SQLAlchemy UPSERT.
+    One price record per card per day.
 
     Args:
         card_detail: The CardDetail object containing the normal_price
     """
+    from datetime import datetime, time
+    from sqlalchemy import func, update, insert
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    # Skip if normal_price is None or 0
+    if not card_detail.normal_price:
+        print(f"No normal_price available for card {card_detail.id}")
+        return False
+
     try:
-        from datetime import datetime
+        current_time = datetime.now()
 
-        # Skip if normal_price is None or 0
-        if not card_detail.normal_price:
-            print(f"No normal_price available for card {card_detail.id}")
-            return False
-
-        # Create a new spot price record
-        new_spot_price = SpotPrices(
+        # Create an insert statement
+        insert_stmt = pg_insert(SpotPrices.__table__).values(
             card_id=card_detail.id,
             price=float(card_detail.normal_price),
-            date=datetime.now()
+            date=current_time
         )
 
-        # Add to session and commit
-        session.add(new_spot_price)
+        # Create the ON CONFLICT DO UPDATE statement
+        # This checks for conflict on card__id + day
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[
+                SpotPrices.card_id,
+                func.date(SpotPrices.date)
+            ],
+            set_={
+                'price': float(card_detail.normal_price),
+                'date': current_time
+            }
+        )
+
+        # Execute the statement
+        session.execute(upsert_stmt)
         session.commit()
         print(f"Recorded spot price {card_detail.normal_price} for card {card_detail.id}")
         return True
@@ -433,7 +451,6 @@ def record_daily_price(card_detail):
         session.rollback()
         print(f"Failed to record spot price: {e}")
         return False
-
 
 
 def update_random_entities():
