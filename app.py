@@ -5,7 +5,7 @@ import requests
 from datetime import datetime
 import numpy as np
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, url_for, redirect
 from flask import request, render_template, Response, stream_with_context
 from flask_caching import Cache
 from flask_caching.jinja2ext import CacheExtension
@@ -749,51 +749,64 @@ def art_gallery():
     )
 
 
+# @app.route('/card/<card_id>', methods=['GET'])
+# def get_card(card_id):
+#     # Fetch the card details
+#     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
+#
+#     # Only update price if we have a hero card
+#     if card is not None:
+#         update_scryfall_prices(card)
+#         update_normal_price(card.id)
+#         record_daily_price(card)
+#
+#     if not card:
+#         return "Card not found", 404
+#
+#     # Query for cards by the same artist
+#     cards_by_artist = session.query(CardDetails).filter(
+#         CardDetails.artist == card.artist,  # Same artist
+#         CardDetails.id != card_id,  # Exclude the current card
+#         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+#     ).limit(9).all()  # Limit to 6 results
+#
+#     # Query for other printings of the same card
+#     other_printings = session.query(CardDetails).filter(
+#         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
+#         CardDetails.id != card_id,  # Exclude the current card
+#         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+#     ).limit(9).all()  # Limit to 6 results
+#
+#     # Access the `all_parts` JSONB field
+#     all_parts = card.all_parts or []  # Default to an empty list if None
+#
+#     # Extract related IDs from the `all_parts` JSON, assuming it's a list of dicts
+#     related_ids = [part["id"] for part in all_parts if "id" in part]
+#
+#     # Query related cards from the database using the extracted IDs
+#     related_cards = session.query(CardDetails).filter(CardDetails.id.in_(related_ids)).all()
+#
+#     # Render the template with the data
+#     return render_template(
+#         'card.html',
+#         card=card,
+#         cards_by_artist=cards_by_artist,
+#         other_printings=other_printings,
+#         related_cards=related_cards
+#     )
+
+
 @app.route('/card/<card_id>', methods=['GET'])
 def card_legacy(card_id):
-    # Fetch the card details
+    # Get card data
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
 
-    # Only update price if we have a hero card
-    if card is not None:
-        update_scryfall_prices(card)
-        update_normal_price(card.id)
-        record_daily_price(card)
-
-    if not card:
-        return "Card not found", 404
-
-    # Query for cards by the same artist
-    cards_by_artist = session.query(CardDetails).filter(
-        CardDetails.artist == card.artist,  # Same artist
-        CardDetails.id != card_id,  # Exclude the current card
-        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9).all()  # Limit to 6 results
-
-    # Query for other printings of the same card
-    other_printings = session.query(CardDetails).filter(
-        CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
-        CardDetails.id != card_id,  # Exclude the current card
-        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9).all()  # Limit to 6 results
-
-    # Access the `all_parts` JSONB field
-    all_parts = card.all_parts or []  # Default to an empty list if None
-
-    # Extract related IDs from the `all_parts` JSON, assuming it's a list of dicts
-    related_ids = [part["id"] for part in all_parts if "id" in part]
-
-    # Query related cards from the database using the extracted IDs
-    related_cards = session.query(CardDetails).filter(CardDetails.id.in_(related_ids)).all()
-
-    # Render the template with the data
-    return render_template(
-        'card.html',
-        card=card,
-        cards_by_artist=cards_by_artist,
-        other_printings=other_printings,
-        related_cards=related_cards
-    )
+    if card:
+        # Generate the slug
+        slug = generate_slug(card.name)
+        # Redirect to new URL format with 301 (permanent) redirect
+        return redirect(url_for('card_detail', card_id=card_id, card_slug=slug), code=301)
+    return render_template('404.html'), 404
 
 
 @app.route('/card/<card_id>/<card_slug>')
