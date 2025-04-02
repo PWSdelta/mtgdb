@@ -867,8 +867,11 @@ def art_gallery():
 def get_card(card_id):
     # Fetch the card details
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-    update_normal_price(card_id)
 
+    # Only update price if we have a hero card
+    if card is not None:
+        update_normal_price(card.id)
+        record_daily_price(card)
 
     if not card:
         return "Card not found", 404
@@ -918,9 +921,7 @@ def hello_world():
             update_normal_price(hero_card.id)
             record_daily_price(hero_card)
 
-        update_random_entities()
-
-
+        # update_random_entities()
 
         expensive_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
