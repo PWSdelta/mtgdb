@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}World's Most Advanced MTG Card Search | PWSDELTA{% endblock %}
+{% block content %}
+
+    <div class="container">
+        <h2>MTG Card Search</h2>
+        <form action="/search" method="get">
+            <div class="row">
+                <!-- Card Name -->
+                <div class="col-md-4 mb-3">
+                    <label for="name">Card Name</label>
+                    <input type="text" class="form-control" id="name" name="name"
+                           value="{{ request.args.get('name', '') }}" placeholder="Enter card name">
+                </div>
+
+                <!-- Card Text -->
+                <div class="col-md-4 mb-3">
+                    <label for="text">Card Text</label>
+                    <input type="text" class="form-control" id="text" name="text"
+                           value="{{ request.args.get('text', '') }}" placeholder="Enter card text">
+                </div>
+
+                <!-- Card Type -->
+                <div class="col-md-4 mb-3">
+                    <label for="type">Card Type</label>
+                    <input type="text" class="form-control" id="type" name="type"
+                           value="{{ request.args.get('type', '') }}" placeholder="Enter card type">
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Colors -->
+                <div class="col-md-6 mb-3">
+                    <label>Colors</label>
+                    <div class="d-flex">
+                        <div class="form-check mr-3">
+                            <input class="form-check-input" type="checkbox" name="colors" value="W" id="color-W"
+                                   {% if 'W' in request.args.getlist('colors') %}checked{% endif %}>
+                            <label class="form-check-label" for="color-W">White</label>
+                        </div>
+                        <div class="form-check mr-3">
+                            <input class="form-check-input" type="checkbox" name="colors" value="U" id="color-U"
+                                   {% if 'U' in request.args.getlist('colors') %}checked{% endif %}>
+                            <label class="form-check-label" for="color-U">Blue</label>
+                        </div>
+                        <div class="form-check mr-3">
+                            <input class="form-check-input" type="checkbox" name="colors" value="B" id="color-B"
+                                   {% if 'B' in request.args.getlist('colors') %}checked{% endif %}>
+                            <label class="form-check-label" for="color-B">Black</label>
+                        </div>
+                        <div class="form-check mr-3">
+                            <input class="form-check-input" type="checkbox" name="colors" value="R" id="color-R"
+                                   {% if 'R' in request.args.getlist('colors') %}checked{% endif %}>
+                            <label class="form-check-label" for="color-R">Red</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="colors" value="G" id="color-G"
+                                   {% if 'G' in request.args.getlist('colors') %}checked{% endif %}>
+                            <label class="form-check-label" for="color-G">Green</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Color Match Type -->
+                <div class="col-md-6 mb-3">
+                    <label for="colorMatch">Color Match</label>
+                    <select class="form-control" id="colorMatch" name="colorMatch">
+                        <option value="exact" {% if request.args.get('colorMatch') == 'exact' %}selected{% endif %}>Exact Match</option>
+                        <option value="includes" {% if request.args.get('colorMatch') == 'includes' %}selected{% endif %}>Includes These Colors</option>
+                        <option value="at-most" {% if request.args.get('colorMatch') == 'at-most' %}selected{% endif %}>At Most These Colors</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Mana Value Range -->
+                <div class="col-md-6 mb-3">
+                    <label>Mana Value Range</label>
+                    <div class="row">
+                        <div class="col">
+                            <input type="number" class="form-control" name="manaMin" placeholder="Min"
+                                   value="{{ request.args.get('manaMin', '') }}">
+                        </div>
+                        <div class="col">
+                            <input type="number" class="form-control" name="manaMax" placeholder="Max"
+                                   value="{{ request.args.get('manaMax', '') }}">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Format Legality -->
+                <div class="col-md-6 mb-3">
+                    <label for="format">Format</label>
+                    <select class="form-control" id="format" name="format">
+                        <option value="">Any Format</option>
+                        <option value="standard" {% if request.args.get('format') == 'standard' %}selected{% endif %}>Standard</option>
+                        <option value="pioneer" {% if request.args.get('format') == 'pioneer' %}selected{% endif %}>Pioneer</option>
+                        <option value="modern" {% if request.args.get('format') == 'modern' %}selected{% endif %}>Modern</option>
+                        <option value="legacy" {% if request.args.get('format') == 'legacy' %}selected{% endif %}>Legacy</option>
+                        <option value="vintage" {% if request.args.get('format') == 'vintage' %}selected{% endif %}>Vintage</option>
+                        <option value="commander" {% if request.args.get('format') == 'commander' %}selected{% endif %}>Commander</option>
+                        <option value="pauper" {% if request.args.get('format') == 'pauper' %}selected{% endif %}>Pauper</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Search Cards</button>
+        </form>
+    </div>
+
+
+<!-- Search Results -->
+{% if cards is defined and cards %}
+<div class="container mt-4">
+    <h3>Search Results</h3>
+    <p>Found {{ total_cards }} cards. Choose your favorite!</p>
+
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+        {% for card in cards %}
+            {% include "_card_component.html" %}
+        {% endfor %}
+    </div>
+</div>
+{% elif request.args %}
+<!-- Show when search was performed but no results found -->
+<div class="container mt-4">
+    <div class="alert alert-info">
+        No cards found matching your search criteria.
+    </div>
+</div>
+{% endif %}
+
+
+
+
+
+<style>
+    /* MTG Search Styling */
+    .mtg-search-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    /* Card Styling */
+    .mtg-card {
+        transition: transform 0.3s ease;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+
+    .mtg-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+    }
+
+    .mtg-card .card-img-top {
+        object-fit: contain;
+        height: 300px;
+    }
+
+    /* Form Styling */
+    #mtg-search-form {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    /* Mana Symbol Styling */
+    .mana-symbol {
+        width: 24px;
+        height: 24px;
+        display: inline-block;
+        vertical-align: middle;
+        margin-right: 5px;
+    }
+
+    /* Collapsible Advanced Options */
+    .advanced-options {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    /* Loading Animation */
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        margin: 30px auto;
+        display: block;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .mtg-card .card-img-top {
+            height: 220px;
+        }
+
+        .form-check-inline {
+            margin-right: 0.5rem;
+        }
+    }
+</style>
+
+{% endblock %}

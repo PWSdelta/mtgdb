@@ -16,7 +16,7 @@ from flask_cors import CORS
 from flask_sitemap import Sitemap
 from jinja2.ext import LoopControlExtension
 from markupsafe import Markup
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Integer, not_, or_
 from sqlalchemy import inspect
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship
@@ -828,11 +828,131 @@ def ask():
     search_query = request.args.get('query', '', type=str)
 
     if not search_query:
-        return render_template('ask.html', error="Please enter a search query.")
+        return render_template('search.html', error="Please enter a search query.")
 
     results = session.query(CardDetails).filter(CardDetails.name.ilike(f'%{search_query}%')).all()
 
-    return render_template('ask.html', results=results, query=search_query)
+    return render_template('search.html', results=results, query=search_query)
+
+
+
+@app.route('/search')
+def search():
+    # If there are no search parameters, just render the form
+    if not any(request.args.values()):
+        return render_template('search.html')
+
+    # Get all search parameters from URL
+    card_name = request.args.get('name', '')
+    card_text = request.args.get('text', '')
+    card_type = request.args.get('type', '')
+    colors = request.args.getlist('colors')
+    colors_str = ''.join(colors)
+    color_match = request.args.get('colorMatch', 'exact')
+    cmc_min = request.args.get('manaMin', '')
+    cmc_max = request.args.get('manaMax', '')
+    rarity = request.args.getlist('rarity')
+    card_set = request.args.get('set', '')
+    mtg_format = request.args.get('format', '')
+    power_min = request.args.get('powerMin', '')
+    power_max = request.args.get('powerMax', '')
+    toughness_min = request.args.get('toughnessMin', '')
+    toughness_max = request.args.get('toughnessMax', '')
+
+    # Start a session
+    session = Session()
+
+    # Build the query using SQLAlchemy's query API
+    query = session.query(CardDetails)
+
+    # Apply filters based on parameters
+    if card_name:
+        query = query.filter(CardDetails.name.ilike(f'%{card_name}%'))
+
+    if card_text:
+        query = query.filter(CardDetails.oracle_text.ilike(f'%{card_text}%'))
+
+    if card_type:
+        types = card_type.split(',')
+        type_filters = [CardDetails.type_line.ilike(f'%{t}%') for t in types]
+        query = query.filter(or_(*type_filters))
+
+    if colors_str:
+        # Handle color matching based on color_match parameter
+        if color_match == 'exact':
+            # Exact color match (no more, no less)
+            query = query.filter(CardDetails.colors == colors_str)
+        elif color_match == 'includes':
+            # Must include all specified colors (may have more)
+            for color in colors_str:
+                query = query.filter(CardDetails.colors.ilike(f'%{color}%'))
+        elif color_match == 'at-most':
+            # Only the specified colors, but not necessarily all of them
+            for color in 'WUBRG':
+                if color not in colors_str:
+                    query = query.filter(not_(CardDetails.colors.ilike(f'%{color}%')))
+
+    if cmc_min:
+        query = query.filter(CardDetails.cmc >= float(cmc_min))
+
+    if cmc_max:
+        query = query.filter(CardDetails.cmc <= float(cmc_max))
+
+    if rarity:
+        query = query.filter(CardDetails.rarity.in_(rarity))
+
+    if card_set:
+        sets = card_set.split(',')
+        query = query.filter(CardDetails.set_code.in_(sets))
+
+    if mtg_format:
+        # This depends on how you store format legality in your database
+        # For example, if you have a column named standard_legal
+        format_column = getattr(CardDetails, f"{mtg_format}_legal")
+        query = query.filter(format_column == True)
+
+    # Handle power/toughness for creatures
+    # Note: Since power/toughness can be non-numeric (like '*'), we need to be careful
+    if power_min:
+        # Filter only numeric power values greater than or equal to power_min
+        query = query.filter(CardDetails.power.op('REGEXP')('^[0-9]+$'))
+        query = query.filter(func.cast(CardDetails.power, Integer) >= int(power_min))
+
+    if power_max:
+        query = query.filter(CardDetails.power.op('REGEXP')('^[0-9]+$'))
+        query = query.filter(func.cast(CardDetails.power, Integer) <= int(power_max))
+
+    if toughness_min:
+        query = query.filter(CardDetails.toughness.op('REGEXP')('^[0-9]+$'))
+        query = query.filter(func.cast(CardDetails.toughness, Integer) >= int(toughness_min))
+
+    if toughness_max:
+        query = query.filter(CardDetails.toughness.op('REGEXP')('^[0-9]+$'))
+        query = query.filter(func.cast(CardDetails.toughness, Integer) <= int(toughness_max))
+
+    # Count total results for pagination before applying limits
+    total_cards = query.count()
+
+    # Add pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = 30  # Cards per page
+    cards = query.order_by(CardDetails.name).offset((page - 1) * per_page).limit(per_page).all()
+
+    total_pages = (total_cards + per_page - 1) // per_page
+
+    # Close the session
+    session.close()
+
+    # Render the template with results and search parameters
+    return render_template(
+        'search.html',
+        cards=cards,
+        total_cards=total_cards,
+        page=page,
+        total_pages=total_pages,
+        search_params=request.args,
+        url_query_string=request.query_string.decode()
+    )
 
 
 @app.route('/random', methods=['GET'])
