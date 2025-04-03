@@ -15,6 +15,10 @@
       </h5>
 
       <p class="card-text">{{ card.oracle_text | safe }}</p>
+      {% if card.flavor_text and card.flavor_text != "None" %}
+            <p class="card-text"><em>{{ card.flavor_text | safe }}</em></p>
+        {% endif %}
+
       <div class="d-flex justify-content-between align-items-center">
         <div class="btn-group">
           <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}" type="button" class="btn btn-sm btn-primary">

@@ -981,23 +981,22 @@ def hello_world():
             record_daily_price(hero_card)
 
 
-        expensive_cards = session.query(CardDetails).filter(
-            CardDetails.normal_price.isnot(None)
-        ).order_by(func.random()
-                   ).limit(33).all() or []  # Ensure it's at least an empty list
+        # expensive_cards = session.query(CardDetails).filter(
+        #     CardDetails.normal_price.isnot(None)
+        # ).order_by(func.random()
+        #            ).limit(33).all() or []  # Ensure it's at least an empty list
 
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),
             CardDetails.normal_price >= 0
         ).order_by(func.random()
-                   ).limit(33).all() or []  # Ensure it's at least an empty list
+                   ).limit(101).all() or []  # Ensure it's at least an empty list
 
         # Render the page with whatever data we have
         return render_template(
             "home.html",
             hero_card=hero_card,  # This could be None
-            random_cards=random_cards,
-            expensive_cards=expensive_cards
+            random_cards=random_cards
         )
     except Exception as e:
         print(f"Transaction failed: {str(e)}")
