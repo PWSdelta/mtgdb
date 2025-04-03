@@ -1,11 +1,14 @@
 import math
 import os
 import re
+import shutil
+import time
+
 import requests
 from datetime import datetime
 import numpy as np
 from dotenv import load_dotenv
-from flask import Flask, url_for, redirect
+from flask import Flask, url_for, redirect, jsonify
 from flask import request, render_template, Response, stream_with_context
 from flask_caching import Cache
 from flask_caching.jinja2ext import CacheExtension
@@ -463,7 +466,7 @@ def generate_sitemap_files():
                     card_id = card.id if hasattr(card, 'id') else card[0]
 
                     # Use the actual card ID in the URL
-                    url_path = f"card/{card_id}"
+                    url_path = f"card/{card_id}/{ card.name.lower().replace(' ', '-') }"
 
                     sitemap_file.write('  <url>\n')
                     sitemap_file.write(f'    <loc>{base_url}/{url_path}</loc>\n')
@@ -524,23 +527,145 @@ def generate_slug(text):
 
 
 
+@app.route('/generate-sitemaps', methods=['GET'])
+def generate_sitemaps():
+    """Generate sitemap files for the application."""
+    try:
+        # Create sitemaps directory if it doesn't exist
+        sitemap_dir = os.path.join(app.static_folder, 'sitemaps')
+        os.makedirs(sitemap_dir, exist_ok=True)
+
+        # Get today's date for lastmod
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        # Base URL for your site
+        base_url = "https://yourdomain.com"  # Replace with your actual domain
+
+        # List to store sitemap entries for the index
+        sitemap_index_entries = []
+
+        # Generate the main sitemap for static pages
+        static_sitemap_filename = "sitemap-static.xml"
+        with open(os.path.join(sitemap_dir, static_sitemap_filename), 'w', encoding='utf-8') as sitemap_file:
+            sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+            # Add static pages
+            static_pages = ['', 'about', 'contact', 'search', 'browse']
+            for page in static_pages:
+                sitemap_file.write('  <url>\n')
+                sitemap_file.write(f'    <loc>{base_url}/{page}</loc>\n')
+                sitemap_file.write(f'    <lastmod>{today}</lastmod>\n')
+                sitemap_file.write('  </url>\n')
+
+            sitemap_file.write('</urlset>\n')
+
+        # Add the static sitemap to the index
+        sitemap_index_entries.append(f"{base_url}/sitemaps/{static_sitemap_filename}")
+
+        # Generate card sitemaps with batching
+        batch_size = 10000  # Maximum URLs per sitemap file
+        sitemap_counter = 1
+
+        # Start with the first batch
+        offset = 0
+
+        while True:
+            # Get a batch of cards using the ORM model (like in your / route)
+            batch_cards = session.query(CardDetails).limit(batch_size).offset(offset).all()
+
+            # If no more cards, break out of the loop
+            if not batch_cards:
+                break
+
+            # Create a new sitemap file for this batch
+            sitemap_filename = f"sitemap-cards-{sitemap_counter}.xml"
+            with open(os.path.join(sitemap_dir, sitemap_filename), 'w', encoding='utf-8') as sitemap_file:
+                # Write sitemap header
+                sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+                # Process each card in this batch
+                cards_in_sitemap = 0
+                for card in batch_cards:
+                    card_id = card.id
+                    card_name = card.name
+
+                    url_path = f"/card/{card_id}/{generate_slug(card_name)}"
+
+                    sitemap_file.write('  <url>\n')
+                    sitemap_file.write(f'    <loc>{base_url}/{url_path}</loc>\n')
+                    sitemap_file.write(f'    <lastmod>{today}</lastmod>\n')
+                    sitemap_file.write('  </url>\n')
+                    cards_in_sitemap += 1
+
+                # Write sitemap footer
+                sitemap_file.write('</urlset>\n')
+
+                print(f"Added {cards_in_sitemap} cards to {sitemap_filename}")
+
+            # Add this sitemap to the index
+            sitemap_index_entries.append(f"{base_url}/sitemaps/{sitemap_filename}")
+
+            # Move to the next batch
+            offset += batch_size
+            sitemap_counter += 1
+
+        # Create sitemap index file
+        sitemap_index_filename = "sitemap.xml"
+        with open(os.path.join(app.static_folder, sitemap_index_filename), 'w', encoding='utf-8') as index_file:
+            index_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            index_file.write('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+            for sitemap_url in sitemap_index_entries:
+                index_file.write('  <sitemap>\n')
+                index_file.write(f'    <loc>{sitemap_url}</loc>\n')
+                index_file.write(f'    <lastmod>{today}</lastmod>\n')
+                index_file.write('  </sitemap>\n')
+
+            index_file.write('</sitemapindex>\n')
+
+        return jsonify({
+            'success': True,
+            'message': f'Generated {sitemap_counter} sitemap files and index',
+            'sitemap_url': f"{base_url}/sitemap.xml"
+        })
+
+    except Exception as e:
+        print(f"Error generating sitemaps: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error generating sitemaps: {str(e)}'
+        }), 500
+
+
 
 @app.route('/sitemap.xml')
 def sitemap_index():
     base_url = "https://pwsdelta.com"  # Change to your actual domain
 
-    # Get the actual count of cards
+    # Get counts
     total_cards = session.query(func.count(CardDetails.id)).scalar()
+    total_products = session.query(Products).count()
 
-    urls_per_sitemap = 10000  # Reduced from 50000 for better performance
-    num_sitemaps = math.ceil(total_cards / urls_per_sitemap)
+    urls_per_sitemap = 10000
+    num_card_sitemaps = math.ceil(total_cards / urls_per_sitemap)
+    num_product_sitemaps = math.ceil(total_products / urls_per_sitemap)
 
     sitemap_index = '<?xml version="1.0" encoding="UTF-8"?>\n'
     sitemap_index += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
 
-    for i in range(num_sitemaps):
+    # Add card sitemaps
+    for i in range(num_card_sitemaps):
         sitemap_index += '  <sitemap>\n'
-        sitemap_index += f'    <loc>{base_url}/sitemap-{i + 1}.xml</loc>\n'
+        sitemap_index += f'    <loc>{base_url}/sitemap-card-{i + 1}.xml</loc>\n'
+        sitemap_index += f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
+        sitemap_index += '  </sitemap>\n'
+
+    # Add product sitemaps
+    for i in range(num_product_sitemaps):
+        sitemap_index += '  <sitemap>\n'
+        sitemap_index += f'    <loc>{base_url}/sitemap-product-{i + 1}.xml</loc>\n'
         sitemap_index += f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
         sitemap_index += '  </sitemap>\n'
 
@@ -549,66 +674,50 @@ def sitemap_index():
     return Response(sitemap_index, mimetype='text/xml')
 
 
+
+@app.route('/sitemap-card-<int:sitemap_id>.xml')
+def sitemap_card(sitemap_id):
+    # Serve a specific card sitemap file
+    sitemap_path = f"static/sitemaps/sitemap-card-{sitemap_id}.xml"
+
+    if os.path.exists(sitemap_path):
+        with open(sitemap_path, 'r') as f:
+            sitemap_content = f.read()
+        return Response(sitemap_content, mimetype='text/xml')
+    else:
+        return "Sitemap not found", 404
+
+
+@app.route('/sitemap-product-<int:sitemap_id>.xml')
+def sitemap_product(sitemap_id):
+    # Serve a specific product sitemap file
+    sitemap_path = f"static/sitemaps/sitemap-product-{sitemap_id}.xml"
+
+    if os.path.exists(sitemap_path):
+        with open(sitemap_path, 'r') as f:
+            sitemap_content = f.read()
+        return Response(sitemap_content, mimetype='text/xml')
+    else:
+        return "Sitemap not found", 404
+
+
+
+# Keep the original route for backward compatibility
 @app.route('/sitemap-<int:sitemap_id>.xml')
 def sitemap(sitemap_id):
-    if sitemap_id < 1:
-        return "Invalid sitemap ID", 404
+    # This will serve the existing backward-compatible file
+    sitemap_path = f"static/sitemaps/sitemap-{sitemap_id}.xml"
 
-    base_url = "https://pwsdelta.com"  # Change to your domain
+    if os.path.exists(sitemap_path):
+        with open(sitemap_path, 'r') as f:
+            sitemap_content = f.read()
+        return Response(sitemap_content, mimetype='text/xml')
+    else:
+        return "Sitemap not found", 404
 
-    def generate():
-        yield '<?xml version="1.0" encoding="UTF-8"?>\n'
-        yield '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
 
-        urls_per_sitemap = 10000
-        offset = (sitemap_id - 1) * urls_per_sitemap
-        batch_size = 1000
 
-        try:
-            # Debug the first few results to see what we're dealing with
-            first_batch = session.query(CardDetails.id) \
-                .order_by(CardDetails.id) \
-                .offset(offset) \
-                .limit(5) \
-                .all()
 
-            print("Debug - First 5 card IDs in batch:")
-            for card in first_batch:
-                print(
-                    f"Card ID: {card.id if hasattr(card, 'id') else card[0]}, Type: {type(card.id if hasattr(card, 'id') else card[0])}")
-
-            # Now process the full batch
-            for batch_offset in range(0, urls_per_sitemap, batch_size):
-                cards = session.query(CardDetails.id) \
-                    .order_by(CardDetails.id) \
-                    .offset(offset + batch_offset) \
-                    .limit(batch_size) \
-                    .all()
-
-                if not cards:
-                    break
-
-                for card in cards:
-                    # Access the UUID correctly - might be a tuple or an object
-                    card_id = card.id if hasattr(card, 'id') else card[0]
-
-                    # Use the correct format: /card/UUID
-                    yield '  <url>\n'
-                    yield f'    <loc>{base_url}/card/{card_id}</loc>\n'
-                    yield f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
-                    yield '  </url>\n'
-
-        except Exception as e:
-            print(f"Error generating sitemap: {str(e)}")
-            # Add a fallback entry
-            yield '  <url>\n'
-            yield f'    <loc>{base_url}/</loc>\n'
-            yield f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
-            yield '  </url>\n'
-
-        yield '</urlset>'
-
-    return Response(stream_with_context(generate()), mimetype='text/xml')
 
 
 @app.route('/product/<product_id>', methods=['GET'])
@@ -749,53 +858,6 @@ def art_gallery():
     )
 
 
-# @app.route('/card/<card_id>', methods=['GET'])
-# def get_card(card_id):
-#     # Fetch the card details
-#     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-#
-#     # Only update price if we have a hero card
-#     if card is not None:
-#         update_scryfall_prices(card)
-#         update_normal_price(card.id)
-#         record_daily_price(card)
-#
-#     if not card:
-#         return "Card not found", 404
-#
-#     # Query for cards by the same artist
-#     cards_by_artist = session.query(CardDetails).filter(
-#         CardDetails.artist == card.artist,  # Same artist
-#         CardDetails.id != card_id,  # Exclude the current card
-#         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-#     ).limit(9).all()  # Limit to 6 results
-#
-#     # Query for other printings of the same card
-#     other_printings = session.query(CardDetails).filter(
-#         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
-#         CardDetails.id != card_id,  # Exclude the current card
-#         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-#     ).limit(9).all()  # Limit to 6 results
-#
-#     # Access the `all_parts` JSONB field
-#     all_parts = card.all_parts or []  # Default to an empty list if None
-#
-#     # Extract related IDs from the `all_parts` JSON, assuming it's a list of dicts
-#     related_ids = [part["id"] for part in all_parts if "id" in part]
-#
-#     # Query related cards from the database using the extracted IDs
-#     related_cards = session.query(CardDetails).filter(CardDetails.id.in_(related_ids)).all()
-#
-#     # Render the template with the data
-#     return render_template(
-#         'card.html',
-#         card=card,
-#         cards_by_artist=cards_by_artist,
-#         other_printings=other_printings,
-#         related_cards=related_cards
-#     )
-
-
 @app.route('/card/<card_id>', methods=['GET'])
 def card_legacy(card_id):
     # Get card data
@@ -902,6 +964,13 @@ def robots():
         Allow: /
         Sitemap: https://pwsdelta.com/sitemap.xml
         """, mimetype='text/plain')
+
+
+
+@app.route('/asdf')
+def asdf():
+    generate_sitemap_files()
+    render_template("home.html", message="Sitemap generation complete")
 
 
 if __name__ == '__main__':
