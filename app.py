@@ -45,15 +45,20 @@ load_dotenv()
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
-# Cache configuration
-app.config['CACHE_TYPE'] = 'SimpleCache'
-app.config['CACHE_DEFAULT_TIMEOUT'] = 3600
-cache = Cache(app)
+# Configure cache
+cache_config = {
+    'CACHE_TYPE': 'SimpleCache',  # In production, consider 'RedisCache'
+    'CACHE_DEFAULT_TIMEOUT': 43200  # 12 hours in seconds
+}
+cache = Cache(app, config=cache_config)
+
 
 # Add the extension from flask_caching
-app.jinja_env.add_extension(CacheExtension)
-app.jinja_env.fragment_cache = cache
-app.jinja_env.add_extension(LoopControlExtension)
+# app.jinja_env.add_extension(CacheExtension)
+# app.jinja_env.add_extension(LoopControlExtension)
+
+app.jinja_env.globals['cache'] = cache
+
 
 
 if os.getenv("APP_ENVIRONMENT", "").startswith("DEV"):
@@ -180,7 +185,7 @@ def update_normal_price(card_id):
     return card
 
 
-def update_product_price(product_id=None, product=None):
+def update_product_price(product_id=None):
     """Main controller method that orchestrates the price update process"""
     # Get product if ID is provided
     product = get_product(product_id, product)
@@ -203,15 +208,6 @@ def update_product_price(product_id=None, product=None):
         print(f"Error during product price update: {e}")
         return False
 
-
-def get_product(product_id=None, product=None):
-    """Get product by ID or return provided product"""
-    if product_id and not product:
-        product = session.get(Products, product_id)
-        if not product:
-            print(f"No product found with ID {product_id}")
-            return None
-    return product
 
 
 def calculate_normal_price(product):
