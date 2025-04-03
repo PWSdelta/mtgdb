@@ -15,6 +15,7 @@ from flask_caching.jinja2ext import CacheExtension
 from flask_cors import CORS
 from flask_sitemap import Sitemap
 from jinja2.ext import LoopControlExtension
+from markupsafe import Markup
 from sqlalchemy import create_engine
 from sqlalchemy import inspect
 from sqlalchemy.ext.automap import automap_base
@@ -50,15 +51,15 @@ cache_config = {
     'CACHE_TYPE': 'SimpleCache',  # In production, consider 'RedisCache'
     'CACHE_DEFAULT_TIMEOUT': 43200  # 12 hours in seconds
 }
+
 cache = Cache(app, config=cache_config)
 
 
 # Add the extension from flask_caching
-# app.jinja_env.add_extension(CacheExtension)
-# app.jinja_env.add_extension(LoopControlExtension)
+app.jinja_env.add_extension('jinja2.ext.loopcontrols')
+app.jinja_env.add_extension('jinja2.ext.do')
 
-app.jinja_env.globals['cache'] = cache
-
+# app.jinja_env.globals['cached_card_image'] = cached_card_image
 
 
 if os.getenv("APP_ENVIRONMENT", "").startswith("DEV"):
@@ -95,6 +96,60 @@ CardDetails.product = relationship(
 
 Session = sessionmaker(bind=engine)
 session = Session()
+
+
+# Create a template filter that renders and caches card images
+@app.template_filter('cached_card_image')
+def cached_card_image(card, timeout=43200):
+    # Create a nested function that will be memoized with the specific timeout
+    @cache.memoize(timeout=timeout)
+    def render_card(card_id):
+        # Get image_uris using safe attribute access
+        image_uris = safe_get_attr(card, 'image_uris', {})
+        normal_img = safe_get_attr(image_uris, 'normal', '')
+
+        # Get other attributes safely
+        card_id = safe_get_attr(card, 'id', '')
+        name = safe_get_attr(card, 'name', '')
+        set_name = safe_get_attr(card, 'set_name', '')
+        type_line = safe_get_attr(card, 'type_line', '')
+        artist = safe_get_attr(card, 'artist', '')
+
+        # Generate slug
+        slug = generate_slug(name)
+
+        html = f'''
+        <a href="/card/{card_id}/{slug}">
+          <img 
+            src="{normal_img}" 
+            alt="{name} - {set_name} Magic: The Gathering Card - {type_line} by {artist}" 
+            class="card-img-top"
+            loading="lazy"
+            onerror="this.onerror=null; this.src='/static/placeholder-card.jpg';">
+        </a>
+        '''
+        return Markup(html)
+
+    # Call the inner function with just the ID for efficient caching
+    card_id = safe_get_attr(card, 'id', '')
+    return render_card(card_id)
+
+
+
+# Helper function to safely access attributes using dot notation
+def safe_get_attr(obj, attr, default=None):
+    try:
+        # Try attribute access first
+        if hasattr(obj, attr):
+            return getattr(obj, attr)
+        # Try dictionary access as fallback
+        elif isinstance(obj, dict) and attr in obj:
+            return obj[attr]
+        return default
+    except:
+        return default
+
+
 
 
 
