@@ -88,13 +88,15 @@ def auto_map_and_insert(file_path, table_name, connection):
 
 
 def main():
-    db_params = {
-        "dbname": "mtgdb",
-        "user": "postgres",
-        "password": os.getenv('DB_PASSWORD'),
-        "host": "localhost",
-        "port": 5432
-    }
+    # db_params = {
+    #     "dbname": "mtgdb",
+    #     "user": "postgres",
+    #     "password": os.getenv('DB_PASSWORD'),
+    #     "host": "localhost",
+    #     "port": 5432
+    # }
+
+    db_params = os.getenv('RW_DATABASE_URL')
 
     # Folder containing the CSV files
     csv_folder = "downloads/"
@@ -104,7 +106,7 @@ def main():
 
     # Connect to the database
     try:
-        connection = psycopg2.connect(**db_params)
+        connection = psycopg2.connect(db_params)
         connection.autocommit = True
         print("Successfully connected to the database.")
     except Exception as e:

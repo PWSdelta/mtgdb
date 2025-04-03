@@ -41,7 +41,7 @@ CORS(app)
 load_dotenv()
 
 
-app = Flask(__name__)
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
@@ -86,12 +86,6 @@ CardDetails.product = relationship(
     primaryjoin="foreign(card_details.tcgplayer_id) == products.productId",
     back_populates="card_details"
 )
-
-
-
-
-
-
 
 
 Session = sessionmaker(bind=engine)
@@ -718,6 +712,11 @@ def sitemap(sitemap_id):
 
 
 
+# Flask routes with SEO-friendly URLs
+@app.route('/product/<product_slug>/', methods=['GET'])
+def product_detail(product_slug):
+    product = session.query(Products).filter_by(slug=product_slug).first_or_404()
+    return render_template('product_detail.html', product=product)
 
 
 @app.route('/product/<product_id>', methods=['GET'])
