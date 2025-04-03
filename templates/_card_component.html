@@ -1,11 +1,7 @@
 <div class="col">
-  <div class="card shadow-lg">
-{#    <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">#}
-{#      <img src="{{ card.image_uris.normal }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}" class="card-img-top">#}
-{#    </a>#}
+  <div class="card shadow-lg  hover-zoom hover-shadow">
 
       {{ card|cached_card_image }}
-
 
     <div class="card-body">
       <h5 class="card-title">
@@ -15,10 +11,6 @@
       </h5>
 
       <p class="card-text">{{ card.oracle_text | safe }}</p>
-      {% if card.flavor_text and card.flavor_text != "None" %}
-            <p class="card-text"><em>{{ card.flavor_text | safe }}</em></p>
-        {% endif %}
-
       <div class="d-flex justify-content-between align-items-center">
         <div class="btn-group">
           <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}" type="button" class="btn btn-sm btn-primary">

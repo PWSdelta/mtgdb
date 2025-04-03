@@ -42,8 +42,40 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="/static/modern-business.css">
 
+
     <link rel="icon" type="image/png" sizes="32x32" href="static/favicon-16x16.png">
     <link rel="icon" type="image/png" sizes="16x16" href="static/favicon-32x32.png">
+
+    <!-- masonry CSS for animations n stuff -->
+    <style>
+        .masonry-container,
+        .masonry-item,
+        .card {
+          opacity: 1;
+          visibility: visible;
+        }
+
+        /* Card hover effects only */
+        .card.hover-zoom {
+          transition: transform 0.3s ease;
+        }
+
+        .card.hover-zoom:hover {
+          transform: scale(1.03);
+        }
+
+        .card.hover-shadow {
+          transition: box-shadow 0.3s ease;
+        }
+
+        .card.hover-shadow:hover {
+          box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23) !important;
+        }
+
+
+
+
+    </style>
 </head>
 
 
@@ -55,10 +87,15 @@
 {% include "_navbar.html" %}
 {#    {% include "_messages.html" %}#}
 
-    <main class="flex-shrink-0">
-        {% block content %}q
-        {% endblock %}
+    <main>
+        {% block content %}{% endblock %}
     </main>
+
+{#    <main class="flex-shrink-0">#}
+{#        {% block content %}#}
+{#        {% endblock %}#}
+{#    </main>#}
+
 
 {#{% include "_footer.html" %}#}
 
@@ -85,6 +122,86 @@
     });
 </script>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM Content Loaded');
+
+        // Initialize masonry with vanilla JS (no jQuery)
+        var grid = document.querySelector('.masonry-grid');
+
+        if (grid) {
+            console.log('Found masonry grid');
+
+            // Check all images in the grid
+            var images = grid.querySelectorAll('img');
+            images.forEach(function(img) {
+                // Log image source for debugging
+                console.log('Image source:', img.src);
+
+                // Add error handler to catch failed image loads
+                img.addEventListener('error', function() {
+                    console.error('Failed to load image:', img.src);
+                    // Optional: replace with a placeholder
+                    img.src = 'https://via.placeholder.com/300x200?text=Image+Not+Found';
+                });
+
+                // For each image, ensure it has proper styling
+                img.style.display = 'block';
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.opacity = '1';
+                img.style.visibility = 'visible';
+            });
+
+            // Initialize masonry after a short delay
+            setTimeout(function() {
+                var masonry = new Masonry(grid, {
+                    itemSelector: '.masonry-item',
+                    columnWidth: '.masonry-grid-sizer',
+                    percentPosition: true,
+                    transitionDuration: '0.4s',
+                    gutter: 0
+                });
+
+                console.log('Masonry initialized');
+
+                // Use imagesLoaded to handle both cached and uncached images
+                imagesLoaded(grid, function() {
+                    console.log('All images loaded (including cached ones)');
+
+                    // Force layout calculation again
+                    masonry.layout();
+
+                    // Ensure all items are visible
+                    var items = grid.querySelectorAll('.masonry-item');
+                    items.forEach(function(item) {
+                        item.style.opacity = '1';
+                        item.style.visibility = 'visible';
+                    });
+
+                    // Add hover effects to cards
+                    var cards = grid.querySelectorAll('.card');
+                    cards.forEach(function(card) {
+                        card.classList.add('hover-zoom', 'hover-shadow');
+                    });
+
+                    console.log('Layout complete with images visible');
+                });
+
+                // Add event listener for window resize
+                window.addEventListener('resize', function() {
+                    masonry.layout();
+                });
+            }, 300);
+        }
+    });
+</script>
+
+
+    <!-- Masonry -->
+    <script src="https://unpkg.com/masonry-layout@4.2.2/dist/masonry.pkgd.min.js"></script>
+    <!-- Optional imagesLoaded plugin for better handling of images -->
+    <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js"></script>
 
 </body>
 </html>

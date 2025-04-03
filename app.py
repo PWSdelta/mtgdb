@@ -124,8 +124,7 @@ def cached_card_image(card, timeout=43200):
             src="{normal_img}" 
             alt="{name} - {set_name} Magic: The Gathering Card - {type_line} by {artist}" 
             class="card-img-top"
-            loading="lazy"
-            onerror="this.onerror=null; this.src='/static/placeholder-card.jpg';">
+            loading="lazy" >
         </a>
         '''
         return Markup(html)
