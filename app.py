@@ -1067,7 +1067,7 @@ def art_gallery():
     cards = (session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
             ).order_by(func.random()
-            ).limit(30)
+            ).limit(300)
              .all())
 
     if not cards:
