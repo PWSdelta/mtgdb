@@ -1095,11 +1095,18 @@ def hello_world():
         # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
 
+        enrichment_card = fetch_random_card_from_db()
+
         # Only update price if we have a hero card
         if hero_card is not None:
             update_scryfall_prices(hero_card)
             update_normal_price(hero_card.id)
             record_daily_price(hero_card)
+
+        if enrichment_card is not None:
+            update_scryfall_prices(enrichment_card)
+            update_normal_price(enrichment_card.id)
+            record_daily_price(enrichment_card)
 
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),

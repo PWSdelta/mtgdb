@@ -115,7 +115,7 @@ def download_images():
                     tcgplayer_str = str(tcgplayer_id) if tcgplayer_id is not None else "notcg"
 
                     # Construct the filename in the new order: name, lang, tcgplayer_id, set, "image.jpg"
-                    filename = f"{card_name_cleaned}_{lang_cleaned}_{tcgplayer_str}_{set_name_cleaned}_image.jpg"
+                    filename = f"{card_name_cleaned}_{lang_cleaned}_{tcgplayer_str}_{set_name_cleaned}_mtg.jpg"
 
                     # Full file path to save the image
                     filepath = os.path.join(SAVE_DIR, filename)
