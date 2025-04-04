@@ -1105,7 +1105,7 @@ def hello_world():
             CardDetails.normal_price.isnot(None),
             CardDetails.normal_price >= 0
         ).order_by(func.random()
-                   ).limit(201).all() or []  # Ensure it's at least an empty list
+                   ).limit(300).all() or []  # Ensure it's at least an empty list
 
         # Render the page with whatever data we have
         return render_template(
