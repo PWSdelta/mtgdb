@@ -1100,10 +1100,10 @@ def hello_world():
             record_daily_price(hero_card)
 
 
-        # expensive_cards = session.query(CardDetails).filter(
-        #     CardDetails.normal_price.isnot(None)
-        # ).order_by(func.random()
-        #            ).limit(33).all() or []  # Ensure it's at least an empty list
+        expensive_cards = session.query(CardDetails).filter(
+            CardDetails.normal_price.isnot(None)
+        ).order_by(func.random()
+                   ).limit(33).all() or []  # Ensure it's at least an empty list
 
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),

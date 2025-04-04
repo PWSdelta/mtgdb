@@ -104,9 +104,28 @@
 </article>
 
 
+
+
+{% if other_printings %}
+<div class="container my-5">
+    <h2 class="text-center">More {{ card.name }} eye candy!</h2>
+    <p class="text-center">Flip through the versions that exist in the MTG universe. Different arts, different frames, same epic card – which one's your favorite?</p>
+
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+        {% for card in other_printings %}
+            {% include "_card_component.html" %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+
 {% if cards_by_artist %}
 <div class="container my-5">
-    <h3 class="text-center">More by <a href="/artists/{{ card.artist }}">{{ card.artist }}</a></h3>
+
+
+<h2 class="text-center">Others by <a href="/artists/{{ card.artist }}">{{ card.artist }}</a></h2>
+<p class="text-center">Love this artist's work? Discover every card illustrated by {{ card.artist }} in our collection. Browse their full Magic portfolio with super-sized art that shows off all the details.</p>
 
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
     {% cache 300, 'artist_cards', card.artist %}
@@ -119,17 +138,7 @@
 {% endif %}
 
 
-{% if other_printings %}
-<div class="container my-5">
-    <h3 class="text-center">Other {{ card.name }} Printings</h3>
 
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-        {% for card in other_printings %}
-            {% include "_card_component.html" %}
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
 
 
 
