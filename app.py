@@ -1,5 +1,6 @@
 import math
 import os
+import random
 import re
 import shutil
 import time
@@ -24,6 +25,7 @@ from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.sync import update
 from sqlalchemy.sql import func
+from sqlalchemy import text
 from threading import Thread
 import logging
 
@@ -187,8 +189,30 @@ def fetch_random_card_from_db():
     Fetches a random card entry from the database.
     """
     try:
+        # random_card = (session.query(CardDetails)
+        #                .order_by(func.random())
+        #                .first())
+
+        # Count all cards that meet the criteria.
+        total_filtered = session.query(func.count(CardDetails.id)).filter(
+            CardDetails.normal_price > 0,
+            CardDetails.image_uris['normal'].isnot(None)
+        ).scalar()
+
+        if total_filtered == 0:
+            return None
+
+        # Pick a random offset within the filtered range.
+        random_offset = random.randint(0, total_filtered - 1)
+
+        # Limit to one row by applying the offset.
         random_card = (session.query(CardDetails)
-                       .order_by(func.random())
+                       .filter(
+            CardDetails.normal_price > 0,
+            CardDetails.image_uris['normal'].isnot(None)
+        )
+                       .offset(random_offset)
+                       .limit(1)
                        .first())
 
         if random_card:
@@ -1136,11 +1160,22 @@ def hello_world():
         #     update_normal_price(enrichment_card.id)
         #     record_daily_price(enrichment_card)
 
-        random_cards = session.query(CardDetails).filter(
-            CardDetails.normal_price.isnot(None),
-            CardDetails.normal_price >= 0
-        ).order_by(func.random()
-                   ).limit(300).all() or []  # Ensure it's at least an empty list
+        query = text("""
+            SELECT *
+            FROM card_details
+            TABLESAMPLE SYSTEM (1)
+            WHERE normal_price IS NOT NULL
+              AND normal_price >= 0
+            LIMIT 300
+        """)
+
+        random_cards = session.execute(query).fetchall() or []
+
+        # random_cards = session.query(CardDetails).filter(
+        #     CardDetails.normal_price.isnot(None),
+        #     CardDetails.normal_price >= 0
+        # ).order_by(func.random()
+        #            ).limit(300).all() or []  # Ensure it's at least an empty list
 
         # Render the page with whatever data we have
         return render_template(
