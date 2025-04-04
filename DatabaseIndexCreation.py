@@ -2,9 +2,9 @@ import os
 import psycopg2
 
 # Get the database connection string from an environment variable
-DATABASE_URL = os.getenv("LOCAL_DB_URL")
+DATABASE_URL = os.getenv("RW_DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("The LOCAL_DB_URL environment variable is not set.")
+    raise ValueError("The RW_DATABASE_URL environment variable is not set.")
 
 # Define the SQL commands for creating indexes
 sql_statements = [

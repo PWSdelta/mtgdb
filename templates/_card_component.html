@@ -1,8 +1,10 @@
 <div class="col">
   <div class="card shadow-lg  hover-zoom hover-shadow">
 
-      {{ card|cached_card_image }}
-
+{#      {{ card|cached_card_image }}#}
+      <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">
+      <img src="{{ card.normal_image }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">
+        </a>
     <div class="card-body">
       <h5 class="card-title">
           {{ card.name }}
@@ -10,7 +12,7 @@
           <a href="/artists/{{ card.artist }}">{{ card.artist }}</a>
       </h5>
 
-      <p class="card-text">{{ card.oracle_text | safe }}</p>
+      <p class="card-text">{{ card.printed_text | safe }}</p>
       <div class="d-flex justify-content-between align-items-center">
         <div class="btn-group">
           <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}" type="button" class="btn btn-sm btn-primary">

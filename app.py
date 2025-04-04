@@ -21,7 +21,7 @@ from markupsafe import Markup
 from sqlalchemy import create_engine, Integer, not_, or_
 from sqlalchemy import inspect
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy.orm import Session, relationship, load_only
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.sync import update
 from sqlalchemy.sql import func
@@ -1160,16 +1160,21 @@ def hello_world():
         #     update_normal_price(enrichment_card.id)
         #     record_daily_price(enrichment_card)
 
-        query = text("""
-            SELECT *
-            FROM card_details
-            TABLESAMPLE SYSTEM (1)
-            WHERE normal_price IS NOT NULL
-              AND normal_price >= 0
-            LIMIT 300
-        """)
-
-        random_cards = session.execute(query).fetchall() or []
+        random_cards = session.query(
+            CardDetails.id,
+            CardDetails.name,
+            CardDetails.artist,
+            CardDetails.printed_text,
+            CardDetails.flavor_text,
+            CardDetails.set_name,
+            CardDetails.tcgplayer_id,
+            CardDetails.normal_price,
+            CardDetails.image_uris["normal"].label("normal_image")
+        ).filter(
+    CardDetails.normal_price > 0,
+            CardDetails.normal_price.isnot(None),
+            CardDetails.image_uris["normal"].isnot(None)
+        ).order_by(func.random()).limit(300).all() or []
 
         # random_cards = session.query(CardDetails).filter(
         #     CardDetails.normal_price.isnot(None),
