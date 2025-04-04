@@ -7,6 +7,11 @@
     <!-- Artist Header -->
     <h1>Endless Art</h1>
     <p>Sit back. Relax. Enjoy the show.</p>
+    <p>
+{#        <button id="theater-mode-toggle" class="btn btn-dark">#}
+{#          <i class="fas fa-film"></i> Theater Mode (try it!)#}
+{#        </button>#}
+    </p>
 
 <div id="carouselExample" class="carousel carousel-fade" data-bs-ride="carousel">
 
@@ -32,5 +37,157 @@
 
 
 </div>
+
+<style>
+/* Theater mode styles */
+body.theater-mode {
+  background-color: #000;
+  transition: background-color 0.5s ease;
+}
+
+/* When in theater mode, expand the carousel container */
+body.theater-mode #carouselContainer {
+  max-width: 100% !important;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  transition: all 0.5s ease;
+}
+
+/* Make carousel images larger in theater mode */
+body.theater-mode .carousel-item img {
+  max-height: 90vh;
+  object-fit: contain;
+}
+
+/* Hide other elements when in theater mode */
+body.theater-mode .non-theater-content {
+  display: none;
+}
+
+/* Style for the toggle button when theater mode is active */
+body.theater-mode #theater-mode-toggle {
+  background-color: #007bff;
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 2000;
+}
+
+/* Animation for transition */
+#carouselContainer {
+  transition: all 0.5s ease;
+}
+/* Theater carousel positioning */
+.theater-carousel {
+    max-width: 90% !important;
+    width: 90%;
+    margin: 0 auto;
+    z-index: 1060;
+    position: relative;
+}
+
+/* Make images pop in theater mode */
+body.theater-mode .carousel-item img {
+    max-height: 90vh;
+    object-fit: contain;
+    box-shadow: 0 0 20px rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+
+/* Style the carousel controls in theater mode */
+body.theater-mode .carousel-control-prev,
+body.theater-mode .carousel-control-next {
+    width: 10%;
+    opacity: 0.2;
+    transition: opacity 0.3s;
+}
+
+body.theater-mode .carousel-control-prev:hover,
+body.theater-mode .carousel-control-next:hover {
+    opacity: 0.8;
+}
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const theaterToggle = document.getElementById('theater-mode-toggle');
+        const body = document.body;
+        const carousel = document.getElementById('myCarousel');
+        let carouselInstance;
+
+        // Create overlay div for theater mode
+        const overlay = document.createElement('div');
+        overlay.id = 'theater-overlay';
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1050; display: none;';
+        document.body.appendChild(overlay);
+
+        // Add the carousel container to the overlay when in theater mode
+        const carouselContainer = document.getElementById('carouselContainer');
+        const originalParent = carouselContainer.parentNode;
+
+        theaterToggle.addEventListener('click', function() {
+            const isEnteringTheaterMode = !body.classList.contains('theater-mode');
+
+            body.classList.toggle('theater-mode');
+
+            if (isEnteringTheaterMode) {
+                // Enter theater mode
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+
+                // Move carousel to overlay
+                carouselContainer.classList.add('theater-carousel');
+                overlay.appendChild(carouselContainer);
+
+                theaterToggle.innerHTML = '<i class="fas fa-compress"></i> Exit Theater Mode';
+
+                // Initialize Bootstrap carousel controls
+                if (typeof bootstrap !== 'undefined') {
+                    carouselInstance = new bootstrap.Carousel(carousel);
+                }
+
+                // Focus on carousel for keyboard controls
+                carousel.focus();
+            } else {
+                // Exit theater mode
+                overlay.style.display = 'none';
+
+                // Move carousel back to original position
+                originalParent.appendChild(carouselContainer);
+                carouselContainer.classList.remove('theater-carousel');
+
+                theaterToggle.innerHTML = '<i class="fas fa-film"></i> Theater Mode';
+            }
+        });
+
+        // Keyboard controls for carousel
+        document.addEventListener('keydown', function(e) {
+            if (body.classList.contains('theater-mode')) {
+                if (e.key === "Escape") {
+                    // Exit theater mode with ESC key
+                    theaterToggle.click();
+                } else if (e.key === "ArrowLeft") {
+                    // Previous slide with left arrow
+                    if (carouselInstance) {
+                        carouselInstance.prev();
+                    } else {
+                        // Fallback if Bootstrap JS not available
+                        carousel.querySelector('.carousel-control-prev').click();
+                    }
+                } else if (e.key === "ArrowRight") {
+                    // Next slide with right arrow
+                    if (carouselInstance) {
+                        carouselInstance.next();
+                    } else {
+                        // Fallback if Bootstrap JS not available
+                        carousel.querySelector('.carousel-control-next').click();
+                    }
+                }
+            }
+        });
+    });
+</script>
 
 {% endblock %}

@@ -1110,7 +1110,7 @@ def hello_world():
         # Render the page with whatever data we have
         return render_template(
             "home.html",
-            hero_card=hero_card,  # This could be None
+            hero_card=hero_card,
             random_cards=random_cards
         )
     except Exception as e:
