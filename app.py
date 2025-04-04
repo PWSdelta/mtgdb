@@ -1054,19 +1054,21 @@ def card_detail(card_id, card_slug):
     if not card:
         return "Card not found", 404
 
-    # Query for cards by the same artist
-    cards_by_artist = session.query(CardDetails).filter(
-        CardDetails.artist == card.artist,  # Same artist
-        CardDetails.id != card_id,  # Exclude the current card
-        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9).all()  # Limit to 6 results
 
     # Query for other printings of the same card
     other_printings = session.query(CardDetails).filter(
         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9).all()  # Limit to 6 results
+    ).limit(27).all()  # Limit to 6 results
+
+
+    # Query for cards by the same artist
+    cards_by_artist = session.query(CardDetails).filter(
+        CardDetails.artist == card.artist,  # Same artist
+        CardDetails.id != card_id,  # Exclude the current card
+        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+    ).limit(27).all()  # Limit to 6 results
 
     # Access the `all_parts` JSONB field
     all_parts = card.all_parts or []  # Default to an empty list if None
