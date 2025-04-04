@@ -1,4 +1,4 @@
-# File: process_cards_module.py
+# Language: Python
 
 import psycopg2
 import psycopg2.extras
@@ -11,7 +11,7 @@ import csv
 # Load environment variables
 load_dotenv()
 
-DB_CONNECTION_STRING = os.environ.get('LOCAL_DB_URL')
+DB_CONNECTION_STRING = os.environ.get('RW_DATABASE_URL')
 
 
 def normalize_list(value):
@@ -29,7 +29,6 @@ def get_composite_key(item):
     - normalized artist_ids (sorted tuple if list; otherwise the value)
     """
     tcgplayer_id = item.get('tcgplayer_id')
-    # Convert tcgplayer_id to string if exists.
     if tcgplayer_id is not None:
         tcgplayer_id = str(tcgplayer_id)
     illustration_id = item.get('illustration_id')
@@ -37,7 +36,22 @@ def get_composite_key(item):
     return (tcgplayer_id, illustration_id, artist_ids)
 
 
-def process_cards(json_file_path, table_name="card_details", batch_size=1000):
+def remove_constraint(cursor, table_name, constraint_name):
+    """
+    Attempt to remove the specified constraint if present.
+    In production, permissions may be restricted so errors are caught.
+    """
+    try:
+        print(f"Attempting to drop constraint '{constraint_name}' on table '{table_name}' if it exists...")
+        drop_query = f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS {constraint_name};"
+        cursor.execute(drop_query)
+        print(f"Constraint '{constraint_name}' was removed (if it existed).")
+    except Exception as e:
+        print(
+            f"Warning: Could not drop constraint '{constraint_name}'. Possibly due to permission restrictions. Error: {e}")
+
+
+def process_cards(json_file_path, table_name="card_details", batch_size=10000):
     try:
         print(f"Loading JSON file {json_file_path}...")
         start_time = time.time()
@@ -52,14 +66,19 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
         duplicate_log_file = 'tcgplayer_id_duplicates.csv'
         with open(duplicate_log_file, 'w', newline='', encoding='utf-8') as log_file:
             log_writer = csv.writer(log_file)
-            log_writer.writerow(
-                ['tcgplayer_id', 'id', 'name', 'set', 'collector_number', 'set_name', 'lang',
-                 'existing_lang', 'illustration_id', 'artist_ids', 'existing_illustration_id', 'existing_artist_ids']
-            )
+            log_writer.writerow([
+                'tcgplayer_id', 'id', 'name', 'set', 'collector_number', 'set_name', 'lang',
+                'existing_lang', 'illustration_id', 'artist_ids', 'existing_illustration_id', 'existing_artist_ids'
+            ])
 
             # Connect to the PostgreSQL database
             with psycopg2.connect(DB_CONNECTION_STRING) as conn:
                 with conn.cursor() as cursor:
+                    # Attempt to remove multiple constraints if they exist.
+                    remove_constraint(cursor, table_name, "card_details_unique_constraint")
+                    remove_constraint(cursor, table_name, "card_details_tcgplayer_id_key")
+                    conn.commit()
+
                     # Get the table columns from the database schema
                     cursor.execute(f"""
                         SELECT column_name, data_type 
@@ -70,23 +89,18 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
                     column_names = [col[0] for col in columns_info]
                     print(f"Found {len(column_names)} columns in table '{table_name}'")
 
-                    # Fetch existing IDs (primary keys) to avoid re-insert
+                    # Fetch existing IDs to avoid re-insert
                     cursor.execute(f"SELECT id FROM {table_name};")
                     existing_ids = {str(row[0]) for row in cursor.fetchall()}
                     print(f"Fetched {len(existing_ids)} existing IDs from the database.")
 
-                    # Fetch existing records for duplicate detection
-                    # Now include artist_ids and illustration_id in this query
+                    # Fetch existing records for duplicate detection by composite key
                     cursor.execute(f"""
                         SELECT tcgplayer_id, id, name, set, collector_number, set_name, lang, artist_ids, illustration_id
                         FROM {table_name}
                         WHERE tcgplayer_id IS NOT NULL;
                     """)
                     rows = cursor.fetchall()
-                    # Build a dict with composite key for duplicate checking.
-                    # Our index mapping is:
-                    # 0: tcgplayer_id, 1: id, 2: name, 3: set, 4: collector_number,
-                    # 5: set_name, 6: lang, 7: artist_ids, 8: illustration_id
                     existing_composite = {}
                     for row in rows:
                         record = {
@@ -105,9 +119,7 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
 
                     print(f"Fetched {len(existing_composite)} existing composite records from the database.")
 
-                    # Tracking for analysis
                     duplicate_by_language = {}
-                    duplicate_keys = {}
                     language_counts = {'same_lang': 0, 'diff_lang': 0}
 
                     total_inserted = 0
@@ -119,24 +131,18 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
                         batch = data[i:i + batch_size]
                         new_records = []
 
-                        # First filter out records that already exist in the database by ID
                         for item in batch:
                             item_id = str(item.get('id', ''))
-                            if not item_id:
-                                total_skipped += 1
-                                continue
-                            if item_id in existing_ids:
+                            if not item_id or item_id in existing_ids:
                                 total_skipped += 1
                                 continue
 
-                            # Use composite key for duplicate detection
                             tcgplayer_id = item.get('tcgplayer_id')
                             if tcgplayer_id is not None:
                                 composite_key = get_composite_key(item)
                                 if composite_key in existing_composite:
                                     total_duplicates += 1
 
-                                    # Log language differences if applicable:
                                     card_lang = item.get('lang', 'Unknown')
                                     existing_lang = existing_composite[composite_key].get('lang', 'Unknown')
                                     if card_lang == existing_lang:
@@ -160,13 +166,10 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
                                         existing_composite[composite_key].get('illustration_id', 'Unknown'),
                                         existing_composite[composite_key].get('artist_ids', 'Unknown')
                                     ])
-                                    continue  # Skip this duplicate record
+                                    continue
 
-                                # Reserve this composite key so that subsequent records can
-                                # be detected as duplicates if they have the same composite key.
                                 existing_composite[composite_key] = item
 
-                            # This record is new.
                             new_records.append(item)
 
                         if not new_records:
@@ -174,51 +177,41 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
                                 f"Batch {i // batch_size + 1}: No new records to insert. Total skipped: {total_skipped}")
                             continue
 
-                        # Map JSON fields to DB columns for new records
+                        # Map JSON fields to DB columns
                         insert_records = []
                         for item in new_records:
                             record = {}
                             for col_name in column_names:
-                                # Direct match
                                 if col_name in item:
                                     record[col_name] = item[col_name]
-                                    continue
-                                # Try the camelCase alternative
-                                parts = col_name.split('_')
-                                camel_case = parts[0] + ''.join(word.capitalize() for word in parts[1:])
-                                if camel_case in item:
-                                    record[col_name] = item[camel_case]
                                 else:
-                                    # Try PascalCase alternative
-                                    pascal_case = ''.join(word.capitalize() for word in col_name.split('_'))
-                                    if pascal_case in item:
-                                        record[col_name] = item[pascal_case]
+                                    parts = col_name.split('_')
+                                    camel_case = parts[0] + ''.join(word.capitalize() for word in parts[1:])
+                                    if camel_case in item:
+                                        record[col_name] = item[camel_case]
+                                    else:
+                                        pascal_case = ''.join(word.capitalize() for word in col_name.split('_'))
+                                        if pascal_case in item:
+                                            record[col_name] = item[pascal_case]
                             if record and 'id' in record:
                                 insert_records.append(record)
 
-                        # Determine common columns among the insert records
-                        common_columns = []
-                        for col in column_names:
-                            if any(col in record for record in insert_records):
-                                common_columns.append(col)
-
+                        common_columns = [col for col in column_names if
+                                          any(col in record for record in insert_records)]
                         columns_str = ', '.join(f'"{col}"' for col in common_columns)
                         placeholders_str = ', '.join(['%s'] * len(common_columns))
                         insert_query = f'INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders_str});'
 
-                        # Prepare values list for batch insertion
                         values_list = []
                         for record in insert_records:
                             row_values = []
                             for col in common_columns:
                                 value = record.get(col)
-                                # Convert dictionaries and lists to JSON strings
                                 if isinstance(value, (dict, list)):
                                     value = json.dumps(value)
                                 row_values.append(value)
                             values_list.append(row_values)
 
-                        # Debug info for the first batch
                         if i == 0 and values_list:
                             print(f"Sample insert query: {insert_query}")
                             print(f"First row has {len(values_list[0])} values for {len(common_columns)} columns")
@@ -226,17 +219,13 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
                         if values_list:
                             psycopg2.extras.execute_batch(cursor, insert_query, values_list)
                             conn.commit()
-
-                            # Add newly inserted IDs so they aren’t reinserted later
                             for record in insert_records:
                                 existing_ids.add(str(record['id']))
 
                             batch_inserted = len(values_list)
                             total_inserted += batch_inserted
-                            print(
-                                f"Batch {i // batch_size + 1}: Inserted {batch_inserted} records. "
-                                f"Total: {total_inserted}, Skipped: {total_skipped}, Duplicates: {total_duplicates}"
-                            )
+                            print(f"Batch {i // batch_size + 1}: Inserted {batch_inserted} records. "
+                                  f"Total: {total_inserted}, Skipped: {total_skipped}, Duplicates: {total_duplicates}")
 
                     print(f"\nImport completed:")
                     print(f"- Total records inserted: {total_inserted}")
@@ -268,5 +257,5 @@ def process_cards(json_file_path, table_name="card_details", batch_size=1000):
 
 
 if __name__ == "__main__":
-    json_file_path = 'all-cards.json'  # Replace with your actual JSON file path
+    json_file_path = 'all-cards.json'  # Update with your actual JSON file path
     process_cards(json_file_path)
