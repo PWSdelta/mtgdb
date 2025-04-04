@@ -1106,14 +1106,12 @@ def card_detail(card_id, card_slug):
     if not card:
         return "Card not found", 404
 
-
     # Query for other printings of the same card
     other_printings = session.query(CardDetails).filter(
         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
     ).limit(999).all()  # Limit to 6 results
-
 
     # Query for cards by the same artist
     cards_by_artist = session.query(CardDetails).filter(
@@ -1169,12 +1167,6 @@ def hello_world():
             CardDetails.normal_price.isnot(None),
             CardDetails.image_uris["normal"].isnot(None)
         ).order_by(func.random()).limit(300).all() or []
-
-        enrichment_card = fetch_random_card_from_db()
-        if enrichment_card is not None:
-            update_scryfall_prices(enrichment_card)
-            update_normal_price(enrichment_card.id)
-            record_daily_price(enrichment_card)
 
         # Render the page with whatever data we have
         return render_template(
