@@ -1122,12 +1122,6 @@ def card_detail(card_id, card_slug):
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
     ).limit(999).all()  # Limit to 6 results
 
-    enrichment_card = fetch_random_card_from_db()
-    if enrichment_card is not None:
-        update_scryfall_prices(enrichment_card)
-        update_normal_price(enrichment_card.id)
-        record_daily_price(enrichment_card)
-
     # Access the `all_parts` JSONB field
     all_parts = card.all_parts or []  # Default to an empty list if None
 
