@@ -1101,17 +1101,11 @@ def hello_world():
             update_normal_price(hero_card.id)
             record_daily_price(hero_card)
 
-
-        expensive_cards = session.query(CardDetails).filter(
-            CardDetails.normal_price.isnot(None)
-        ).order_by(func.random()
-                   ).limit(33).all() or []  # Ensure it's at least an empty list
-
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),
             CardDetails.normal_price >= 0
         ).order_by(func.random()
-                   ).limit(101).all() or []  # Ensure it's at least an empty list
+                   ).limit(201).all() or []  # Ensure it's at least an empty list
 
         # Render the page with whatever data we have
         return render_template(
