@@ -1060,7 +1060,7 @@ def card_detail(card_id, card_slug):
         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(27).all()  # Limit to 6 results
+    ).limit(999).all()  # Limit to 6 results
 
 
     # Query for cards by the same artist
@@ -1068,7 +1068,7 @@ def card_detail(card_id, card_slug):
         CardDetails.artist == card.artist,  # Same artist
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(27).all()  # Limit to 6 results
+    ).limit(999).all()  # Limit to 6 results
 
     # Access the `all_parts` JSONB field
     all_parts = card.all_parts or []  # Default to an empty list if None
