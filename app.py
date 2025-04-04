@@ -3,6 +3,7 @@ import os
 import random
 import re
 import shutil
+import threading
 import time
 
 import requests
@@ -1168,10 +1169,10 @@ def hello_world():
         hero_card = fetch_random_card_from_db()
 
         # Only update price if we have a hero card
-        # if hero_card is not None:
-            # update_scryfall_prices(hero_card)
-            # update_normal_price(hero_card.id)
-            # record_daily_price(hero_card)
+        if hero_card is not None:
+            update_scryfall_prices(hero_card)
+            update_normal_price(hero_card.id)
+            record_daily_price(hero_card)
 
         random_cards = session.query(
             CardDetails.id,
@@ -1202,6 +1203,18 @@ def hello_world():
         return render_template("error.html", error=str(e)), 500
     finally:
         session.close()
+
+
+
+def delta_price_workflow(card):
+    if card is not None:
+        update_scryfall_prices(card)
+        update_normal_price(card.id)
+        record_daily_price(card)
+        print(f"Delta price workflow for card {card.name} ({card.id})")
+    return card
+
+
 
 
 @app.route('/robots.txt')
