@@ -1122,6 +1122,12 @@ def card_detail(card_id, card_slug):
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
     ).limit(999).all()  # Limit to 6 results
 
+    enrichment_card = fetch_random_card_from_db()
+    if enrichment_card is not None:
+        update_scryfall_prices(enrichment_card)
+        update_normal_price(enrichment_card.id)
+        record_daily_price(enrichment_card)
+
     # Access the `all_parts` JSONB field
     all_parts = card.all_parts or []  # Default to an empty list if None
 
@@ -1147,23 +1153,17 @@ def hello_world():
         # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
 
-        # enrichment_card = fetch_random_card_from_db()
-
         # Only update price if we have a hero card
         if hero_card is not None:
             update_scryfall_prices(hero_card)
             update_normal_price(hero_card.id)
             record_daily_price(hero_card)
 
-        # if enrichment_card is not None:
-        #     update_scryfall_prices(enrichment_card)
-        #     update_normal_price(enrichment_card.id)
-        #     record_daily_price(enrichment_card)
-
         random_cards = session.query(
             CardDetails.id,
             CardDetails.name,
             CardDetails.artist,
+            CardDetails.oracle_text,
             CardDetails.printed_text,
             CardDetails.flavor_text,
             CardDetails.set_name,
@@ -1176,11 +1176,11 @@ def hello_world():
             CardDetails.image_uris["normal"].isnot(None)
         ).order_by(func.random()).limit(300).all() or []
 
-        # random_cards = session.query(CardDetails).filter(
-        #     CardDetails.normal_price.isnot(None),
-        #     CardDetails.normal_price >= 0
-        # ).order_by(func.random()
-        #            ).limit(300).all() or []  # Ensure it's at least an empty list
+        enrichment_card = fetch_random_card_from_db()
+        if enrichment_card is not None:
+            update_scryfall_prices(enrichment_card)
+            update_normal_price(enrichment_card.id)
+            record_daily_price(enrichment_card)
 
         # Render the page with whatever data we have
         return render_template(

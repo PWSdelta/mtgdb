@@ -56,8 +56,12 @@
             </span>
 
         <p><strong>Type:</strong> {{ card.type_line }}</p>
-        {% if card.oracle_text %}
-            <p><strong>Oracle Text:</strong> {{ card.oracle_text | safe }}</p>
+        {% if card.printed_text %}
+            <p>{{ card.printed_text | safe }}</p>
+        {% elif card.text %}
+            <p>{{ card.text | safe }}</p>
+        {% elif card.oracle_text %}
+            <p>{{ card.oracle_text | safe }}</p>
         {% endif %}
         {% if card.flavor_text %}
             <p><em>{{ card.flavor_text | safe }}</em></p>

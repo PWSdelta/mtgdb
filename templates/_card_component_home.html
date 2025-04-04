@@ -1,10 +1,10 @@
 <div class="col">
   <div class="card shadow-lg  hover-zoom hover-shadow">
 
-      {{ card|cached_card_image }}
-{#      <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">#}
-{#      <img src="{{ card.normal_image }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">#}
-{#        </a>#}
+{#      {{ card|cached_card_image }}#}
+      <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">
+      <img src="{{ card.normal_image }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">
+        </a>
 
     <div class="card-body">
       <h5 class="card-title">
@@ -13,7 +13,7 @@
           <a href="/artists/{{ card.artist }}">{{ card.artist }}</a>
       </h5>
 
-        {% if card.printed_text %}
+      {% if card.printed_text %}
             <p>{{ card.printed_text | safe }}</p>
         {% elif card.text %}
             <p>{{ card.text | safe }}</p>
