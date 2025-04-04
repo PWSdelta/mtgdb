@@ -1130,11 +1130,11 @@ def robots():
         """, mimetype='text/plain')
 
 
-
-@app.route('/asdf')
-def asdf():
-    generate_sitemap_files()
-    render_template("home.html", message="Sitemap generation complete")
+#
+# @app.route('/asdf')
+# def asdf():
+#     generate_sitemap_files()
+#     render_template("home.html", message="Sitemap generation complete")
 
 
 if __name__ == '__main__':

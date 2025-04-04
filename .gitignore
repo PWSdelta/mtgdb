@@ -76,3 +76,5 @@ local_settings.py
 .env
 pricing/downloads/
 pricing/images/
+pricing/images/normal/
+all-cards.json
