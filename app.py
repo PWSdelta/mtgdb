@@ -7,13 +7,14 @@ import time
 import requests
 from datetime import datetime
 import numpy as np
-from dotenv import load_dotenv
 from flask import Flask, url_for, redirect, jsonify
 from flask import request, render_template, Response, stream_with_context
 from flask_caching import Cache
 from flask_caching.jinja2ext import CacheExtension
 from flask_cors import CORS
 from flask_sitemap import Sitemap
+from flask_apscheduler import APScheduler
+
 from jinja2.ext import LoopControlExtension
 from markupsafe import Markup
 from sqlalchemy import create_engine, Integer, not_, or_
@@ -23,7 +24,9 @@ from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.sync import update
 from sqlalchemy.sql import func
+from threading import Thread
 import logging
+
 
 # Configure logging
 logging.basicConfig(
@@ -39,7 +42,6 @@ ext = Sitemap(app)
 
 
 CORS(app)
-load_dotenv()
 
 
 
@@ -98,6 +100,7 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 
+
 # Create a template filter that renders and caches card images
 @app.template_filter('cached_card_image')
 def cached_card_image(card, timeout=43200):
@@ -135,6 +138,35 @@ def cached_card_image(card, timeout=43200):
 
 
 
+def run_task_in_background(task_func, *args, **kwargs):
+    thread = Thread(target=task_func, args=args, kwargs=kwargs)
+    thread.daemon = True
+    thread.start()
+    return thread
+
+
+def card_spot_price_workflow(card_id):
+    with app.app_context():
+        session = Session()
+
+        try:
+            print(f"Processing item {card_id}")
+            card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
+            if card is not None:
+                update_scryfall_prices(card)
+                update_normal_price(card.id)
+                record_daily_price(card)
+
+        except Exception as e:
+            print(f"An error occurred during the card_spot_price_workflow(): {e}")
+            return None
+
+@app.route('/spot/<card_id>')
+def process_item(card_id):
+    run_task_in_background(card_spot_price_workflow, card_id)
+    return f"Processing started for card {card_id}"
+
+
 # Helper function to safely access attributes using dot notation
 def safe_get_attr(obj, attr, default=None):
     try:
@@ -147,10 +179,6 @@ def safe_get_attr(obj, attr, default=None):
         return default
     except:
         return default
-
-
-
-
 
 
 
@@ -1095,7 +1123,7 @@ def hello_world():
         # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
 
-        enrichment_card = fetch_random_card_from_db()
+        # enrichment_card = fetch_random_card_from_db()
 
         # Only update price if we have a hero card
         if hero_card is not None:
@@ -1103,10 +1131,10 @@ def hello_world():
             update_normal_price(hero_card.id)
             record_daily_price(hero_card)
 
-        if enrichment_card is not None:
-            update_scryfall_prices(enrichment_card)
-            update_normal_price(enrichment_card.id)
-            record_daily_price(enrichment_card)
+        # if enrichment_card is not None:
+        #     update_scryfall_prices(enrichment_card)
+        #     update_normal_price(enrichment_card.id)
+        #     record_daily_price(enrichment_card)
 
         random_cards = session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None),
