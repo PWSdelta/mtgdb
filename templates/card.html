@@ -117,7 +117,7 @@
 
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
         {% for card in other_printings %}
-            {% include "_card_component.html" %}
+            {% include "_card_component_home.html" %}
         {% endfor %}
     </div>
 </div>
@@ -134,7 +134,7 @@
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
     {% cache 300, 'artist_cards', card.artist %}
         {% for card in cards_by_artist %}
-          {% include "_card_component.html" %}
+          {% include "_card_component_home.html" %}
         {% endfor %}
     {% endcache %}
     </div>

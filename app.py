@@ -1098,23 +1098,45 @@ def card_detail(card_id, card_slug):
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
 
     # Only update price if we have a hero card
-    if card is not None:
-        update_scryfall_prices(card)
-        update_normal_price(card.id)
-        record_daily_price(card)
+    # if card is not None:
+    #     update_scryfall_prices(card)
+    #     update_normal_price(card.id)
+    #     record_daily_price(card)
 
     if not card:
         return "Card not found", 404
 
     # Query for other printings of the same card
-    other_printings = session.query(CardDetails).filter(
+    other_printings = session.query(
+            CardDetails.id,
+            CardDetails.name,
+            CardDetails.artist,
+            CardDetails.oracle_text,
+            CardDetails.printed_text,
+            CardDetails.flavor_text,
+            CardDetails.set_name,
+            CardDetails.tcgplayer_id,
+            CardDetails.normal_price,
+            CardDetails.image_uris["normal"].label("normal_image")
+        ).filter(
         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
     ).limit(999).all()  # Limit to 6 results
 
     # Query for cards by the same artist
-    cards_by_artist = session.query(CardDetails).filter(
+    cards_by_artist = session.query(
+            CardDetails.id,
+            CardDetails.name,
+            CardDetails.artist,
+            CardDetails.oracle_text,
+            CardDetails.printed_text,
+            CardDetails.flavor_text,
+            CardDetails.set_name,
+            CardDetails.tcgplayer_id,
+            CardDetails.normal_price,
+            CardDetails.image_uris["normal"].label("normal_image")
+        ).filter(
         CardDetails.artist == card.artist,  # Same artist
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
@@ -1146,10 +1168,10 @@ def hello_world():
         hero_card = fetch_random_card_from_db()
 
         # Only update price if we have a hero card
-        if hero_card is not None:
-            update_scryfall_prices(hero_card)
-            update_normal_price(hero_card.id)
-            record_daily_price(hero_card)
+        # if hero_card is not None:
+            # update_scryfall_prices(hero_card)
+            # update_normal_price(hero_card.id)
+            # record_daily_price(hero_card)
 
         random_cards = session.query(
             CardDetails.id,
