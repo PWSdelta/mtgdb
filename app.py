@@ -43,6 +43,7 @@ logging.basicConfig(
 app = Flask(__name__)
 ext = Sitemap(app)
 
+logger = logging.getLogger(__name__)
 
 CORS(app)
 
@@ -1097,11 +1098,10 @@ def card_detail(card_id, card_slug):
     # Fetch the card details
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
 
-    # Only update price if we have a hero card
-    # if card is not None:
-    #     update_scryfall_prices(card)
-    #     update_normal_price(card.id)
-    #     record_daily_price(card)
+    if card is not None:
+        update_scryfall_prices(card)
+        update_normal_price(card.id)
+        record_daily_price(card)
 
     if not card:
         return "Card not found", 404
@@ -1166,15 +1166,14 @@ def hello_world():
     try:
         # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
-        # delta_price_workflow(hero_card)
 
         # Only update price if we have a hero card
-        # if hero_card is not None:
-        #     thread = threading.Thread(target=delta_price_workflow, args=(hero_card,))
-        #     thread.start()
-        #
-        # enrichment_card = fetch_random_card_from_db()
-        # delta_price_workflow(enrichment_card)
+        if hero_card is not None:
+            update_normal_price(hero_card.id)
+            record_daily_price(hero_card)
+            record_daily_price(hero_card)
+
+
 
         random_cards = session.query(
             CardDetails.id,
@@ -1208,37 +1207,6 @@ def hello_world():
 
 
 
-def mass_delta_price_workflow(card):
-    print("Entered delta_price_workflow. Lots of logging here.")
-
-    if card is not None:
-        cache.set(f"processing_{card.id}", True, timeout=300)
-        logging.info(f"Cached {{ card.id }}'s processing status.")
-    try:
-        update_scryfall_prices(card)
-        logging.info(f"Updated Scryfall prices for card {card.name} ({card.id})")
-        update_normal_price(card.id)
-        logging.info(f"Updated Delta price for card {card.name} ({card.id})")
-        record_daily_price(card)
-        logging.info(f"Delta price workflow for card {card.name} ({card.id})")
-    except Exception as e:
-        # You can log errors or handle accordingly
-        logging.info("Error processing record", card.id, e)
-    finally:
-        # Mark task as finished
-        cache.delete(f"processing_{card.id}")
-        logging.info("Delta Price workflow task completed for card", card.id)
-
-
-# def fetch_all_card_details():
-#     """
-#     Retrieves up to 300 randomly selected card_details records,
-#     only including records with a valid normal_price and image.
-#     """
-
-
-
-
 @app.route('/robots.txt')
 def robots():
     return Response("""
@@ -1256,5 +1224,6 @@ def robots():
 
 
 if __name__ == '__main__':
+    mass_delta_price_workflow()
     app.run()
 
