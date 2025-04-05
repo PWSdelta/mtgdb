@@ -127,14 +127,25 @@ def download_images():
 
                     print(f"Successfully downloaded: {filename}")
 
-                    # Update the `normal_image_name` field in the database
-                    update_query = """
-                        UPDATE card_details
-                        SET normal_image_name = %s
-                        WHERE id = %s;
-                    """
-                    cursor.execute(update_query, (filename, card_id))
-                    conn.commit()
+                    # Python code snippet
+                    try:
+                        update_query = """
+                            UPDATE card_details
+                            SET normal_image_name = %s
+                            WHERE id = %s;
+                        """
+                        cursor.execute(update_query, (filename, card_id))
+                        conn.commit()
+                    except psycopg2.Error as db_error:
+                        # Check if it's a duplicate key error by inspecting the error message
+                        if "duplicate key value violates unique constraint" in str(db_error):
+                            print(
+                                f"Duplicate filename encountered for card ID {card_id} with filename {filename}; skipping update.")
+                            conn.rollback()
+                        else:
+                            # For all other errors, re-raise or handle accordingly
+                            raise
+
 
                 except requests.exceptions.RequestException as e:
                     print(f"Failed to download image for ID {card_id}: {e}")

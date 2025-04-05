@@ -1207,12 +1207,25 @@ def hello_world():
 
 
 def delta_price_workflow(card):
+    print("Entered delta_price_workflow. Lots of logging here.")
     if card is not None:
+        cache.set(f"processing_{card.id}", True, timeout=9999)
+        print(f"Cached {{ card.id }}'s processing status.")
+    try:
         update_scryfall_prices(card)
+        print(f"Updated Scryfall prices for card {card.name} ({card.id})")
         update_normal_price(card.id)
+        print(f"Updated Delta price for card {card.name} ({card.id})")
         record_daily_price(card)
         print(f"Delta price workflow for card {card.name} ({card.id})")
-    return card
+    except Exception as e:
+        # You can log errors or handle accordingly
+        print("Error processing record", card.id, e)
+    finally:
+        # Mark task as finished
+        cache.delete(f"processing_{card.id}")
+        print("Delta Price workflow task completed for card", card.id)
+
 
 
 
