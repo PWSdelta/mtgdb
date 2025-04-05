@@ -1167,7 +1167,7 @@ def hello_world():
     try:
         # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
-        delta_price_workflow(hero_card)
+        # delta_price_workflow(hero_card)
 
         # Only update price if we have a hero card
         # if hero_card is not None:
