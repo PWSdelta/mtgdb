@@ -1048,7 +1048,7 @@ def artist_cards(artist_name):
         artist_name = artist_name.replace('%20', ' ')
 
         # Query all card entries for this artist
-        cards = session.query(CardDetails).filter(CardDetails.artist == artist_name).all()
+        cards = session.query(CardDetails).filter(CardDetails.artist == artist_name).limit(999).all()
 
         # If no cards for this artist are found
         if not cards:
@@ -1164,16 +1164,7 @@ def card_detail(card_id, card_slug):
 @app.route('/', methods=['GET', 'HEAD'])
 def hello_world():
     try:
-        # Get hero card and check if it exists
         hero_card = fetch_random_card_from_db()
-
-        # Only update price if we have a hero card
-        if hero_card is not None:
-            update_normal_price(hero_card.id)
-            record_daily_price(hero_card)
-            record_daily_price(hero_card)
-
-
 
         random_cards = session.query(
             CardDetails.id,
@@ -1190,7 +1181,7 @@ def hello_world():
     CardDetails.normal_price > 0,
             CardDetails.normal_price.isnot(None),
             CardDetails.image_uris["normal"].isnot(None)
-        ).order_by(func.random()).limit(300).all() or []
+        ).order_by(func.random()).limit(37).all() or []
 
         # Render the page with whatever data we have
         return render_template(
@@ -1228,7 +1219,7 @@ def asdf():
         update_normal_price(current_card.id)
         record_daily_price(current_card)
         record_daily_price(current_card)
-        time.sleep(.11)
+        time.sleep(random.uniform(1.31, 3.77))
 
     render_template("home.html", message="Sitemap generation complete")
 
