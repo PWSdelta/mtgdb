@@ -1067,7 +1067,6 @@ def artist_cards(artist_name):
 def art_gallery():
     cards = (session.query(CardDetails).filter(
             CardDetails.normal_price.isnot(None)
-            ).order_by(func.random()
             ).limit(300)
              .all())
 
@@ -1123,7 +1122,7 @@ def card_detail(card_id, card_slug):
         CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(999).all()  # Limit to 6 results
+    ).limit(9999).all()  # Limit to 6 results
 
     # Query for cards by the same artist
     cards_by_artist = session.query(
@@ -1141,7 +1140,7 @@ def card_detail(card_id, card_slug):
         CardDetails.artist == card.artist,  # Same artist
         CardDetails.id != card_id,  # Exclude the current card
         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(999).all()  # Limit to 6 results
+    ).limit(9999).all()  # Limit to 6 results
 
     # Access the `all_parts` JSONB field
     all_parts = card.all_parts or []  # Default to an empty list if None
@@ -1209,26 +1208,33 @@ def hello_world():
 
 
 
-def delta_price_workflow(card):
+def mass_delta_price_workflow(card):
     print("Entered delta_price_workflow. Lots of logging here.")
+
     if card is not None:
-        cache.set(f"processing_{card.id}", True, timeout=9999)
-        print(f"Cached {{ card.id }}'s processing status.")
+        cache.set(f"processing_{card.id}", True, timeout=300)
+        logging.info(f"Cached {{ card.id }}'s processing status.")
     try:
         update_scryfall_prices(card)
-        print(f"Updated Scryfall prices for card {card.name} ({card.id})")
+        logging.info(f"Updated Scryfall prices for card {card.name} ({card.id})")
         update_normal_price(card.id)
-        print(f"Updated Delta price for card {card.name} ({card.id})")
+        logging.info(f"Updated Delta price for card {card.name} ({card.id})")
         record_daily_price(card)
-        print(f"Delta price workflow for card {card.name} ({card.id})")
+        logging.info(f"Delta price workflow for card {card.name} ({card.id})")
     except Exception as e:
         # You can log errors or handle accordingly
-        print("Error processing record", card.id, e)
+        logging.info("Error processing record", card.id, e)
     finally:
         # Mark task as finished
         cache.delete(f"processing_{card.id}")
-        print("Delta Price workflow task completed for card", card.id)
+        logging.info("Delta Price workflow task completed for card", card.id)
 
+
+# def fetch_all_card_details():
+#     """
+#     Retrieves up to 300 randomly selected card_details records,
+#     only including records with a valid normal_price and image.
+#     """
 
 
 
