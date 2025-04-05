@@ -1174,12 +1174,8 @@ def hello_world():
         #     thread = threading.Thread(target=delta_price_workflow, args=(hero_card,))
         #     thread.start()
         #
-        # enrichment_card = fetch_random_card_from_db()
-        #
-        # # Only update price if we have a hero card
-        # if enrichment_card is not None:
-        #     thread = threading.Thread(target=delta_price_workflow, args=(enrichment_card,))
-        #     thread.start()
+        enrichment_card = fetch_random_card_from_db()
+        delta_price_workflow(enrichment_card)
 
         random_cards = session.query(
             CardDetails.id,
