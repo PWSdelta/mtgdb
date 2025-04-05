@@ -96,7 +96,7 @@ def main():
     #     "port": 5432
     # }
 
-    db_params = os.getenv('RW_DATABASE_URL')
+    db_params = os.getenv('LOCAL_DB_URL')
 
     # Folder containing the CSV files
     csv_folder = "downloads/"

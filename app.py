@@ -55,7 +55,7 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 # Configure cache
 cache_config = {
     'CACHE_TYPE': 'SimpleCache',  # In production, consider 'RedisCache'
-    'CACHE_DEFAULT_TIMEOUT': 43200  # 12 hours in seconds
+    'CACHE_DEFAULT_TIMEOUT': 86400  # 24 hours in seconds
 }
 
 cache = Cache(app, config=cache_config)
@@ -107,7 +107,7 @@ session = Session()
 
 # Create a template filter that renders and caches card images
 @app.template_filter('cached_card_image')
-def cached_card_image(card, timeout=43200):
+def cached_card_image(card, timeout=86400):
     # Create a nested function that will be memoized with the specific timeout
     @cache.memoize(timeout=timeout)
     def render_card(card_id):
@@ -1217,13 +1217,22 @@ def robots():
 
 
 #
-# @app.route('/asdf')
-# def asdf():
-#     generate_sitemap_files()
-#     render_template("home.html", message="Sitemap generation complete")
+@app.route('/asdf')
+def asdf():
+    session = Session()
+
+    card_ids = session.query(CardDetails.id).all()
+
+    for card in card_ids:
+        current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
+        update_normal_price(current_card.id)
+        record_daily_price(current_card)
+        record_daily_price(current_card)
+        time.sleep(.11)
+
+    render_template("home.html", message="Sitemap generation complete")
 
 
 if __name__ == '__main__':
-    mass_delta_price_workflow()
     app.run()
 
