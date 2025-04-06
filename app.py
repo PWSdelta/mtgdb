@@ -239,12 +239,13 @@ def update_normal_price(card_id):
 
         print(f"Card found: {card.name} | tcgplayer_id: {card.tcgplayer_id}")
 
-        product = session.query(Products).filter(Products.productId == card.tcgplayer_id).first()
-        # if not product:
-            # raise ValueError(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
-            # print(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
-
-        # print(f"Product found: {product.name} | {product.productId}")
+        product = None
+        if card.tcgplayer_id:  # Only try to find product if tcgplayer_id exists
+            product = session.query(Products).filter(Products.productId == card.tcgplayer_id).first()
+            if product:
+                print(f"Product found: {product.name} | {product.productId}")
+            else:
+                print(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
 
     except Exception as e:
         print(f"Error fetching card: {e}")
@@ -268,6 +269,11 @@ def update_normal_price(card_id):
 
         all_prices = [usd_price, eur_price, low_price, mid_price, market_price, direct_low_price]
         valid_prices = [price for price in all_prices if price > 0]
+
+        # If we don't have product prices but have at least one of usd or eur, use those
+        if not product and (usd_price > 0 or eur_price > 0):
+            valid_prices = [price for price in [usd_price, eur_price] if price > 0]
+            print(f"Using only card prices (no product): {valid_prices}")
 
         if not valid_prices:
             raise ValueError(f"No valid prices found for card_id: {card_id}")
@@ -297,43 +303,6 @@ def update_normal_price(card_id):
 
     # Return the updated card
     return card
-
-
-
-def calculate_normal_price(product):
-    """Calculate normalized price from various sources"""
-    # Gather price sources
-    prices_to_consider = []
-    # Add your actual price sources here
-    # Example: prices_to_consider.append(product.tcgplayer_price) if product.tcgplayer_price else None
-
-    if not prices_to_consider:
-        print(f"No valid prices found for product {product.name}")
-        return None
-
-    # Calculate with your standard method
-    return float(np.mean(prices_to_consider))
-
-
-def save_product_price(product, new_price):
-    """Save the calculated price to database"""
-    try:
-        # Update database directly
-        session.execute(
-            update(Products)
-            .where(Products.productId == product.productId)
-            .values(normalPrice=new_price)
-        )
-        session.commit()
-
-        # Refresh product object
-        session.refresh(product)
-        print(f"Updated normalPrice to {new_price} for product {product.productId}")
-        return True
-    except Exception as e:
-        session.rollback()
-        print(f"Database update failed: {e}")
-        return False
 
 
 def record_daily_price(card_detail):
@@ -1205,21 +1174,21 @@ def robots():
 
 
 
-#
-# @app.route('/asdf')
-# def asdf():
-#     session = Session()
-#
-#     card_ids = session.query(CardDetails.id).all()
-#
-#     for card in card_ids:
-#         current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
-#         update_normal_price(current_card.id)
-#         record_daily_price(current_card)
-#
-#         time.sleep(random.uniform(0.31, 0.77))
-#
-#     render_template("home.html", message="Sitemap generation complete")
+
+@app.route('/asdf')
+def asdf():
+    session = Session()
+
+    card_ids = session.query(CardDetails.id).all()
+
+    for card in card_ids:
+        current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
+        update_normal_price(current_card.id)
+        record_daily_price(current_card)
+
+        time.sleep(random.uniform(0.31, 0.377))
+
+    render_template("home.html", message="Sitemap generation complete")
 
 
 if __name__ == '__main__':
