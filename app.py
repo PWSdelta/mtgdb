@@ -872,10 +872,25 @@ def card_detail(card_id, card_slug):
     )
 
 
-@app.route('/', methods=['GET', 'HEAD'])
+
+
+@app.route('/', methods=['GET'])
 def hello_world():
     try:
-        hero_card = fetch_random_card_from_db()
+        # Try to get the cached hero card ID
+        hero_card_id = cache.get('hero_card_id')
+
+        if hero_card_id is not None:
+            # Get the full hero card by ID
+            hero_card = session.query(CardDetails).get(hero_card_id)
+        else:
+            # If not in cache, get a random card
+            hero_card = fetch_random_card_from_db()
+            if hero_card:
+                # Cache just the ID for 10 minutes
+                cache.set('hero_card_id', hero_card.id, timeout=600)
+
+
 
         random_cards = session.query(
             CardDetails.id,
@@ -1015,6 +1030,14 @@ def serve_sitemap(filename):
 
 
 
+
+
+
+
+
+
+
+
 @app.route('/robots.txt')
 def robots():
     return Response("""
@@ -1043,76 +1066,18 @@ def robots():
 
 @app.route('/asdf')
 def asdf():
-    # Create a separate DB connection for updating spot prices
-    db_url = os.environ.get('LOCAL_DB_URL')
-    spot_prices_engine = create_engine(db_url)
-    SpotPriceSession = sessionmaker(bind=spot_prices_engine)
-    spot_prices_session = SpotPriceSession()
+    session = Session()
 
-    try:
-        # Get all card IDs
-        card_ids = spot_prices_session.query(CardDetails.id).all()
-        total_cards = len(card_ids)
-        logger.info(f"Starting spot price update for {total_cards} cards")
+    card_ids = session.query(CardDetails.id).all()
 
-        for index, card in enumerate(card_ids):
-            try:
-                # Fetch the current card details
-                current_card = spot_prices_session.query(CardDetails).filter(CardDetails.id == card.id).first()
+    for card in card_ids:
+        current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
+        update_normal_price(current_card.id)
+        record_daily_price(current_card)
 
-                if current_card is not None:
-                    # Update prices and record daily price
-                    update_scryfall_prices(current_card)
-                    update_normal_price(current_card.id)
-                    record_daily_price(current_card)
+        time.sleep(random.uniform(0.31, 0.377))
 
-                    # Commit after each card to avoid losing all work if there's a failure
-                    spot_prices_session.commit()
-
-                    # Log progress periodically
-                    if index % 100 == 0:
-                        logger.info(f"Updated {index}/{total_cards} cards")
-
-                # Sleep to avoid overwhelming external APIs
-                time.sleep(random.uniform(1.31, 4.77))
-
-            except Exception as e:
-                # Log the error but continue with other cards
-                logger.error(f"Error updating card ID {card.id}: {str(e)}")
-                spot_prices_session.rollback()
-
-        logger.info("Completed updating spot prices")
-        return "Spot prices update completed successfully"
-
-    except Exception as e:
-        logger.error(f"Error in update_spot_prices: {str(e)}")
-        return f"Error updating spot prices: {str(e)}"
-
-    finally:
-        # Always close the session
-        spot_prices_session.close()
-
-
-    # db_url = os.environ.get('RW_DATABASE_URL')
-    # spot_prices_engine = create_engine(db_url)
-    # SpotPriceSession = sessionmaker(bind=spot_prices_engine)
-    # spot_prices_session = SpotPriceSession()
-    #
-    # # session = Session()
-    #
-    # card_ids = spot_prices_session.query(CardDetails.id).all()
-    #
-    # for card in card_ids:
-    #     current_card = spot_prices_session.query(CardDetails).filter(CardDetails.id == card.id).first()
-    #
-    #     if current_card is not None:
-    #         update_scryfall_prices(current_card)
-    #         update_normal_price(current_card.id)
-    #         record_daily_price(current_card)
-    #
-    #     time.sleep(random.uniform(1.31, 4.77))
-    #
-    # render_template("home.html", message="updated spot prices complete")
+    render_template("home.html", message="Sitemap generation complete")
 
 
 if __name__ == '__main__':

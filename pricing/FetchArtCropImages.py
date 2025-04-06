@@ -14,6 +14,7 @@ DB_CONFIG = {
     'port': '5432'
 }
 
+
 # Folder to save images
 SAVE_DIR = 'art_crop/'
 
