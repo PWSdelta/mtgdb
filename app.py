@@ -1189,21 +1189,37 @@ def robots():
         """, mimetype='text/plain')
 
 
+# @app.route('/wp-admin/setup-config.php', methods=['GET', 'POST'])
+# def fake_wordpress_setup():
+#     # Log the attempt
+#     ip_address = request.remote_addr
+#     user_agent = request.headers.get('User-Agent', 'Unknown')
 #
-@app.route('/asdf')
-def asdf():
-    session = Session()
+#     print(f"WordPress probe attempt detected from IP: {ip_address}, User-Agent: {user_agent}")
+#
+#     # Optional: Log to database or file
+#     with open('intrusion_attempts.log', 'a') as f:
+#         f.write(f"{datetime.now()}, {ip_address}, {user_agent}, wp-admin/setup-config.php\n")
+#
+#     return 404
 
-    card_ids = session.query(CardDetails.id).all()
 
-    for card in card_ids:
-        current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
-        update_normal_price(current_card.id)
-        record_daily_price(current_card)
 
-        time.sleep(random.uniform(1.31, 3.77))
-
-    render_template("home.html", message="Sitemap generation complete")
+#
+# @app.route('/asdf')
+# def asdf():
+#     session = Session()
+#
+#     card_ids = session.query(CardDetails.id).all()
+#
+#     for card in card_ids:
+#         current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
+#         update_normal_price(current_card.id)
+#         record_daily_price(current_card)
+#
+#         time.sleep(random.uniform(0.31, 0.77))
+#
+#     render_template("home.html", message="Sitemap generation complete")
 
 
 if __name__ == '__main__':
