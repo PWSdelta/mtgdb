@@ -890,26 +890,54 @@ def hello_world():
                 # Cache just the ID for 10 minutes
                 cache.set('hero_card_id', hero_card.id, timeout=600)
 
+        # Try to get the cached random card IDs
+        random_card_ids = cache.get('random_card_ids')
 
+        if random_card_ids is not None:
+            # Get all cards in a single query
+            random_cards = session.query(
+                CardDetails.id,
+                CardDetails.name,
+                CardDetails.artist,
+                CardDetails.oracle_text,
+                CardDetails.printed_text,
+                CardDetails.flavor_text,
+                CardDetails.set_name,
+                CardDetails.tcgplayer_id,
+                CardDetails.normal_price,
+                CardDetails.image_uris["normal"].label("normal_image")
+            ).filter(
+                CardDetails.id.in_(random_card_ids)
+            ).all()
 
-        random_cards = session.query(
-            CardDetails.id,
-            CardDetails.name,
-            CardDetails.artist,
-            CardDetails.oracle_text,
-            CardDetails.printed_text,
-            CardDetails.flavor_text,
-            CardDetails.set_name,
-            CardDetails.tcgplayer_id,
-            CardDetails.normal_price,
-            CardDetails.image_uris["normal"].label("normal_image")
-        ).filter(
-    CardDetails.normal_price > 0,
-            CardDetails.normal_price.isnot(None),
-            CardDetails.image_uris["normal"].isnot(None)
-        ).order_by(func.random()).limit(37).all() or []
+            # Sort them to match the original random order
+            id_to_position = {id: i for i, id in enumerate(random_card_ids)}
+            random_cards.sort(key=lambda card: id_to_position.get(card.id, 0))
+        else:
+            # If not in cache, run the original query
+            random_cards = session.query(
+                CardDetails.id,
+                CardDetails.name,
+                CardDetails.artist,
+                CardDetails.oracle_text,
+                CardDetails.printed_text,
+                CardDetails.flavor_text,
+                CardDetails.set_name,
+                CardDetails.tcgplayer_id,
+                CardDetails.normal_price,
+                CardDetails.image_uris["normal"].label("normal_image")
+            ).filter(
+                CardDetails.normal_price > 0,
+                CardDetails.normal_price.isnot(None),
+                CardDetails.image_uris["normal"].isnot(None)
+            ).order_by(func.random()).limit(137).all() or []
 
-        # Render the page with whatever data we have
+            # Cache the IDs of the selected cards
+            if random_cards:
+                ids_to_cache = [card.id for card in random_cards]
+                cache.set('random_card_ids', ids_to_cache, timeout=600)  # Also 10 minutes
+
+        # Render the main template
         return render_template(
             "home.html",
             hero_card=hero_card,
@@ -921,7 +949,6 @@ def hello_world():
         return render_template("error.html", error=str(e)), 500
     finally:
         session.close()
-
 
 
 
