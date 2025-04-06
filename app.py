@@ -5,10 +5,9 @@ import re
 import shutil
 import threading
 import time
-import traceback
 
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 from flask import Flask, url_for, redirect, jsonify
 from flask import request, render_template, Response, stream_with_context
@@ -241,13 +240,14 @@ def update_normal_price(card_id):
         print(f"Card found: {card.name} | tcgplayer_id: {card.tcgplayer_id}")
 
         product = session.query(Products).filter(Products.productId == card.tcgplayer_id).first()
-        if not product:
-            raise ValueError(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
+        # if not product:
+            # raise ValueError(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
+            # print(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
 
-        print(f"Product found: {product.name} | {product.productId}")
+        # print(f"Product found: {product.name} | {product.productId}")
 
     except Exception as e:
-        print(f"Error fetching card or product: {e}")
+        print(f"Error fetching card: {e}")
         return None
 
     # Calculate normal price
@@ -255,11 +255,16 @@ def update_normal_price(card_id):
         prices = card.prices or {}
         usd_price = float(prices.get('usd', 0) or 0)
         eur_price = float(prices.get('eur', 0) or 0)
+        low_price = 0.0
+        mid_price = 0.0
+        market_price = 0.0
+        direct_low_price = 0.0
 
-        low_price = float(product.lowPrice or 0)
-        mid_price = float(product.midPrice or 0)
-        market_price = float(product.marketPrice or 0)
-        direct_low_price = float(product.directLowPrice or 0)
+        if product:
+            low_price = float(product.lowPrice or 0)
+            mid_price = float(product.midPrice or 0)
+            market_price = float(product.marketPrice or 0)
+            direct_low_price = float(product.directLowPrice or 0)
 
         all_prices = [usd_price, eur_price, low_price, mid_price, market_price, direct_low_price]
         valid_prices = [price for price in all_prices if price > 0]
@@ -295,228 +300,19 @@ def update_normal_price(card_id):
 
 
 
-def update_card_prices(update_scryfall=False, scryfall_frequency=7, database_url=None):
-    """
-    Updates prices for all cards that don't have a spot price record for today.
+def calculate_normal_price(product):
+    """Calculate normalized price from various sources"""
+    # Gather price sources
+    prices_to_consider = []
+    # Add your actual price sources here
+    # Example: prices_to_consider.append(product.tcgplayer_price) if product.tcgplayer_price else None
 
-    Parameters:
-    - update_scryfall: If True, updates Scryfall prices. If False, skips Scryfall updates.
-    - scryfall_frequency: How many days between Scryfall updates (e.g., 7 = weekly updates)
-    """
-    start_time = time.time()
-    # session = Session()
+    if not prices_to_consider:
+        print(f"No valid prices found for product {product.name}")
+        return None
 
-
-
-    # Create a custom engine if database_url is provided
-    if database_url:
-        custom_engine = create_engine(database_url)
-        Session_custom = sessionmaker(bind=custom_engine)
-        session = Session_custom()
-    else:
-        # Use the default session
-        session = Session()
-
-
-
-    # Counters for each operation type
-    scryfall_success = 0
-    normal_price_success = 0
-    spot_price_success = 0
-    scryfall_errors = 0
-    normal_price_errors = 0
-    spot_price_errors = 0
-    skip_count = 0
-
-    try:
-        # Get today's date (at midnight)
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow = today + timedelta(days=1)
-        scryfall_cutoff = today - timedelta(days=scryfall_frequency)
-
-        print(f"Starting price update process at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Finding cards without price records for {today.strftime('%Y-%m-%d')}")
-
-        if update_scryfall:
-            print(
-                f"Scryfall updates enabled. Will update cards with Scryfall data older than {scryfall_cutoff.strftime('%Y-%m-%d')}")
-        else:
-            print("Scryfall updates disabled. Skipping Scryfall API calls.")
-
-        # Get all card IDs
-        all_card_ids = [card_id[0] for card_id in session.query(CardDetails.id).all()]
-        total_cards = len(all_card_ids)
-
-        # Get card IDs that already have prices today
-        cards_with_prices_today = [
-            card_id[0] for card_id in
-            session.query(SpotPrices.card_id).distinct().filter(
-                SpotPrices.date >= today,
-                SpotPrices.date < tomorrow
-            ).all()
-        ]
-
-        # Find cards that need updates (set difference)
-        cards_needing_update = list(set(all_card_ids) - set(cards_with_prices_today))
-        cards_to_process = len(cards_needing_update)
-
-        print(f"Total cards in database: {total_cards}")
-        print(f"Cards already with prices today: {len(cards_with_prices_today)}")
-        print(f"Cards needing updates: {cards_to_process}")
-
-        if cards_to_process == 0:
-            print("No cards need price updates today. Exiting.")
-            return
-
-        # Process cards needing updates
-        print(f"Beginning to process {cards_to_process} cards...")
-
-        for index, card_id in enumerate(cards_needing_update):
-            # Calculate progress percentage
-            progress = (index + 1) / cards_to_process * 100
-
-            # Get the card object
-            card = session.get(CardDetails, card_id)
-
-            if not card:
-                print(f"Warning: Card with ID {card_id} not found in database. Skipping.")
-                skip_count += 1
-                continue
-
-            # Short log for each card
-            if (index + 1) % 10 == 0 or index < 10:
-                print(f"\nProcessing card {index + 1}/{cards_to_process}: {card.name} (ID: {card_id})")
-
-            # Check if card has tcgplayer_id
-            if not card.tcgplayer_id:
-                print(f"Skipping card {card.name} - No TCGPlayer ID available")
-                skip_count += 1
-                continue
-
-            # Step 1: Conditionally update Scryfall prices
-            if update_scryfall:
-                needs_scryfall_update = False
-
-                # Check when the card was last updated from Scryfall
-                if hasattr(card, 'last_scryfall_update') and card.last_scryfall_update:
-                    last_update = card.last_scryfall_update
-                    if isinstance(last_update, str):
-                        try:
-                            last_update = datetime.fromisoformat(last_update)
-                        except:
-                            needs_scryfall_update = True
-
-                    if isinstance(last_update, datetime) and last_update < scryfall_cutoff:
-                        needs_scryfall_update = True
-                else:
-                    needs_scryfall_update = True
-
-                if needs_scryfall_update:
-                    try:
-                        print(f"  - Updating Scryfall data for {card.name}")
-                        update_scryfall_prices(card)
-                        # Update the last_scryfall_update field if it exists
-                        if hasattr(card, 'last_scryfall_update'):
-                            card.last_scryfall_update = today
-                        scryfall_success += 1
-                    except Exception as e:
-                        scryfall_errors += 1
-                        print(f"  ✗ Error updating Scryfall prices for {card.name}: {str(e)}")
-                else:
-                    print(f"  - Skipping Scryfall update for {card.name} (recently updated)")
-
-            # Step 2: Update normal price
-            normal_price_updated = False
-            try:
-                update_normal_price(card_id)
-                normal_price_success += 1
-                normal_price_updated = True
-            except Exception as e:
-                normal_price_errors += 1
-                print(f"  ✗ Error updating normal price for {card.name}: {str(e)}")
-
-            # Refresh card object to get the updated normal_price
-            if normal_price_updated:
-                session.refresh(card)
-
-            # Step 3: Record daily price
-            try:
-                # Check if the normal_price is available and valid
-                if not hasattr(card, 'normal_price') or card.normal_price is None:
-                    print(f"  ⚠ Skipping spot price for {card.name} - normal_price is None")
-                    skip_count += 1
-                else:
-                    # Pass the card object to record_daily_price
-                    record_daily_price(card)
-                    spot_price_success += 1
-                    print(f"  ✓ Successfully recorded spot price for {card.name}: {card.normal_price}")
-            except Exception as e:
-                spot_price_errors += 1
-                print(f"  ✗ Error recording daily spot price for {card.name}: {str(e)}")
-                traceback.print_exc()
-
-            # Commit changes periodically
-            if (index + 1) % 50 == 0:
-                try:
-                    session.commit()
-                except Exception as e:
-                    print(f"  ✗ Error committing changes: {str(e)}")
-                    session.rollback()
-
-            # Print progress summary periodically
-            if (index + 1) % 50 == 0 or index == cards_to_process - 1:
-                elapsed = time.time() - start_time
-                cards_per_second = (index + 1) / elapsed if elapsed > 0 else 0
-                eta_seconds = (cards_to_process - (index + 1)) / cards_per_second if cards_per_second > 0 else 0
-
-                print(f"\nProgress: {index + 1}/{cards_to_process} ({progress:.1f}%)")
-                print(
-                    f"Success rates - Scryfall: {scryfall_success}, Normal: {normal_price_success}, Spot: {spot_price_success}")
-                print(
-                    f"Error rates - Scryfall: {scryfall_errors}, Normal: {normal_price_errors}, Spot: {spot_price_errors}")
-                print(f"Skipped cards: {skip_count}")
-                print(
-                    f"Speed: {cards_per_second:.1f} cards/sec - ETA: {int(eta_seconds / 60)}m {int(eta_seconds % 60)}s")
-
-        # Final commit
-        try:
-            session.commit()
-        except Exception as e:
-            print(f"Error on final commit: {str(e)}")
-            session.rollback()
-
-    except Exception as e:
-        print(f"Critical error in update process: {str(e)}")
-        traceback.print_exc()
-        session.rollback()
-    finally:
-        session.close()
-
-        # Print summary
-        total_time = time.time() - start_time
-        minutes, seconds = divmod(total_time, 60)
-        print("\n===== PRICE UPDATE SUMMARY =====")
-        print(f"Process completed in {int(minutes)}m {int(seconds)}s")
-        print(f"Cards processed: {scryfall_success + normal_price_success + spot_price_success + skip_count}")
-        print(f"Scryfall price updates - Success: {scryfall_success}, Errors: {scryfall_errors}")
-        print(f"Normal price updates - Success: {normal_price_success}, Errors: {normal_price_errors}")
-        print(f"Spot price records - Success: {spot_price_success}, Errors: {spot_price_errors}")
-        print(f"Skipped cards: {skip_count}")
-        if total_time > 0:
-            print(
-                f"Average processing speed: {(scryfall_success + normal_price_success + spot_price_success + skip_count) / total_time:.1f} cards/second")
-        print("===============================")
-
-# Call the function like this:
-# For daily updates without Scryfall API calls:
-# update_card_prices(update_scryfall=False)
-#
-# For weekly updates including Scryfall API calls:
-# update_card_prices(update_scryfall=True, scryfall_frequency=7)
-
-
-
-
+    # Calculate with your standard method
+    return float(np.mean(prices_to_consider))
 
 
 def save_product_price(product, new_price):
@@ -555,9 +351,7 @@ def record_daily_price(card_detail):
     # Skip if normal_price is None or 0
     if not card_detail.normal_price:
         print(f"No normal_price available for card {card_detail.id}")
-        update_normal_price(card_detail.id)
-        return f"Error... error... error..."
-
+        return False
 
     try:
         current_time = datetime.now()
@@ -593,6 +387,63 @@ def record_daily_price(card_detail):
         return False
 
 
+def update_random_entities():
+    """Updates prices for a random card and a random product."""
+    results = {}
+
+    try:
+        # Get and update a random product
+        random_product = session.query(Products).order_by(func.random()).first()
+        if random_product is not None:
+            update_product_price(random_product.productId)
+            results['product'] = {
+                'id': random_product.productId,
+                'name': random_product.cleanName,
+                'status': 'updated'
+            }
+        else:
+            results['product'] = {'status': 'no products available'}
+
+        # Get and update a random card
+        random_card = session.query(CardDetails).order_by(func.random()).first()
+        if random_card is not None:
+            update_normal_price(random_card.id)
+            results['card'] = {
+                'id': random_card.id,
+                'name': random_card.name,
+                'status': 'updated'
+            }
+        else:
+            results['card'] = {'status': 'no cards available'}
+
+    except Exception as e:
+        results['error'] = str(e)
+
+    return results
+
+
+def find_product_by_id_or_random(product_id=None, category_id=None):
+    session = Session()
+
+    if product_id:
+        # Fetch product by productId
+        product = session.query(Products).filter_by(productId=product_id).first()
+        if not product:
+            raise ValueError(f"Product with ID {product_id} not found.")
+        return product
+
+    query = session.query(Products)
+
+    if category_id:
+        # Filter by categoryId if provided
+        query = query.filter_by(categoryId=category_id)
+
+    random_product = query.order_by(func.random()).first()
+    if not random_product:
+        raise ValueError("No products found.")
+
+    return random_product
+
 
 def prettify_keys(sqlalchemy_object):
     if not hasattr(sqlalchemy_object, "__dict__"):
@@ -614,6 +465,29 @@ def prettify_keys(sqlalchemy_object):
 
     return prettified_data
 
+
+def prettify_column_name(column_name):
+    """
+    Converts camelCase field names into human-readable format:
+    e.g., 'productId' -> 'Product Id'
+    """
+    # Insert a space before any uppercase letter that follows a lowercase letter
+    pretty_name = re.sub(r'(?<=\w)([A-Z])', r' \1', column_name)
+    # Capitalize the first letter
+    return pretty_name.title()
+
+
+def prepare_product_data(raw_product):
+    prettified = prettify_keys(raw_product)
+
+    # Custom order for keys
+    custom_order = ['productId', 'name',  'cleanName']
+
+    ordered_data = {key: prettified.pop(key) for key in custom_order if key in prettified}
+
+    # Add any remaining keys at the end
+    ordered_data.update(prettified)
+    return ordered_data
 
 
 def generate_sitemap_files():
@@ -1318,9 +1192,19 @@ def robots():
 #
 @app.route('/asdf')
 def asdf():
-    update_card_prices(database_url=os.getenv('LOCAL_DB_URL'), update_scryfall=True)
+    session = Session()
 
-    return "hello"
+    card_ids = session.query(CardDetails.id).all()
+
+    for card in card_ids:
+        current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
+        update_normal_price(current_card.id)
+        record_daily_price(current_card)
+
+        time.sleep(random.uniform(1.31, 3.77))
+
+    render_template("home.html", message="Sitemap generation complete")
+
 
 if __name__ == '__main__':
     app.run()
