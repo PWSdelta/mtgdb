@@ -15,7 +15,7 @@ DB_CONFIG = {
 }
 
 # Folder to save images
-SAVE_DIR = 'images/'
+SAVE_DIR = 'art_crop/'
 
 
 # Function to sanitize filenames (remove invalid characters)
@@ -30,7 +30,7 @@ def sanitize_filename(filename):
     return filename
 
 
-# Function to create a unique index on the normal_image_name column
+# Function to create a unique index on the art_crop_image column
 def create_uniqueness_constraint():
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -39,23 +39,23 @@ def create_uniqueness_constraint():
         # Check if the index already exists
         check_query = """
         SELECT 1 FROM pg_indexes 
-        WHERE indexname = 'normal_image_name_unique_idx';
+        WHERE indexname = 'art_crop_image_name_unique_idx';
         """
         cursor.execute(check_query)
         index_exists = cursor.fetchone() is not None
 
         if not index_exists:
-            # Create a unique index on normal_image_name
+            # Create a unique index on art_crop_image
             create_index_query = """
-            CREATE UNIQUE INDEX normal_image_name_unique_idx 
-            ON card_details (normal_image_name) 
-            WHERE normal_image_name IS NOT NULL;
+            CREATE UNIQUE INDEX art_crop_image_name_unique_idx 
+            ON card_details (art_crop_image_name) 
+            WHERE art_crop_image_name IS NOT NULL;
             """
             cursor.execute(create_index_query)
             conn.commit()
-            print("Created unique index on normal_image_name column.")
+            print("Created unique index on art_crop_image column.")
         else:
-            print("Unique index on normal_image_name already exists.")
+            print("Unique index on art_crop_image already exists.")
 
         cursor.close()
         conn.close()
@@ -78,7 +78,7 @@ def download_images():
         query = """
             SELECT id, image_uris, name, set_name, tcgplayer_id, lang
             FROM card_details
-            WHERE image_uris IS NOT NULL AND (normal_image_name IS NULL OR normal_image_name = '');
+            WHERE image_uris IS NOT NULL AND (art_crop_image_name IS NULL OR art_crop_image_name = '');
         """
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -97,9 +97,9 @@ def download_images():
                 print(f"Skipping card ID {card_id} due to missing name or set name.")
                 continue
 
-            # Extract the `normal` key from the JSONB object
-            if 'normal' in image_uris:
-                image_url = image_uris['normal']
+            # Extract the `art_crop` key from the JSONB object
+            if 'art_crop' in image_uris:
+                image_url = image_uris['art_crop']
 
                 try:
                     # Download the image
@@ -115,7 +115,7 @@ def download_images():
                     tcgplayer_str = str(tcgplayer_id) if tcgplayer_id is not None else "notcg"
 
                     # Construct the filename in the new order: name, lang, tcgplayer_id, set, "image.jpg"
-                    filename = f"{card_name_cleaned}_{lang_cleaned}_{tcgplayer_str}_{set_name_cleaned}_mtg.jpg"
+                    filename = f"{card_name_cleaned}_{lang_cleaned}_{tcgplayer_str}_{set_name_cleaned}_mtg_art.jpg"
 
                     # Full file path to save the image
                     filepath = os.path.join(SAVE_DIR, filename)
@@ -131,7 +131,7 @@ def download_images():
                     try:
                         update_query = """
                             UPDATE card_details
-                            SET normal_image_name = %s
+                            SET art_crop_image_name = %s
                             WHERE id = %s;
                         """
                         cursor.execute(update_query, (filename, card_id))

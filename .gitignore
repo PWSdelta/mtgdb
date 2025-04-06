@@ -77,5 +77,6 @@ local_settings.py
 pricing/downloads/
 pricing/images/
 pricing/images/normal/
+pricing/art_crop
 all-cards.json
 pricing/all-cards.json

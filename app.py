@@ -576,152 +576,6 @@ def generate_slug(text):
 
 
 
-@app.route('/generate-sitemaps', methods=['GET'])
-def generate_sitemaps():
-    """Generate sitemap files for the application."""
-    try:
-        # Create sitemaps directory if it doesn't exist
-        sitemap_dir = os.path.join(app.static_folder, 'sitemaps')
-        os.makedirs(sitemap_dir, exist_ok=True)
-
-        # Get today's date for lastmod
-        today = datetime.now().strftime('%Y-%m-%d')
-
-        # Base URL for your site
-        base_url = "https://yourdomain.com"  # Replace with your actual domain
-
-        # List to store sitemap entries for the index
-        sitemap_index_entries = []
-
-        # Generate the main sitemap for static pages
-        static_sitemap_filename = "sitemap-static.xml"
-        with open(os.path.join(sitemap_dir, static_sitemap_filename), 'w', encoding='utf-8') as sitemap_file:
-            sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-            sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-
-            # Add static pages
-            static_pages = ['', 'about', 'contact', 'search', 'browse']
-            for page in static_pages:
-                sitemap_file.write('  <url>\n')
-                sitemap_file.write(f'    <loc>{base_url}/{page}</loc>\n')
-                sitemap_file.write(f'    <lastmod>{today}</lastmod>\n')
-                sitemap_file.write('  </url>\n')
-
-            sitemap_file.write('</urlset>\n')
-
-        # Add the static sitemap to the index
-        sitemap_index_entries.append(f"{base_url}/sitemaps/{static_sitemap_filename}")
-
-        # Generate card sitemaps with batching
-        batch_size = 10000  # Maximum URLs per sitemap file
-        sitemap_counter = 1
-
-        # Start with the first batch
-        offset = 0
-
-        while True:
-            # Get a batch of cards using the ORM model (like in your / route)
-            batch_cards = session.query(CardDetails).limit(batch_size).offset(offset).all()
-
-            # If no more cards, break out of the loop
-            if not batch_cards:
-                break
-
-            # Create a new sitemap file for this batch
-            sitemap_filename = f"sitemap-cards-{sitemap_counter}.xml"
-            with open(os.path.join(sitemap_dir, sitemap_filename), 'w', encoding='utf-8') as sitemap_file:
-                # Write sitemap header
-                sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-                sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-
-                # Process each card in this batch
-                cards_in_sitemap = 0
-                for card in batch_cards:
-                    card_id = card.id
-                    card_name = card.name
-
-                    url_path = f"/card/{card_id}/{generate_slug(card_name)}"
-
-                    sitemap_file.write('  <url>\n')
-                    sitemap_file.write(f'    <loc>{base_url}/{url_path}</loc>\n')
-                    sitemap_file.write(f'    <lastmod>{today}</lastmod>\n')
-                    sitemap_file.write('  </url>\n')
-                    cards_in_sitemap += 1
-
-                # Write sitemap footer
-                sitemap_file.write('</urlset>\n')
-
-                print(f"Added {cards_in_sitemap} cards to {sitemap_filename}")
-
-            # Add this sitemap to the index
-            sitemap_index_entries.append(f"{base_url}/sitemaps/{sitemap_filename}")
-
-            # Move to the next batch
-            offset += batch_size
-            sitemap_counter += 1
-
-        # Create sitemap index file
-        sitemap_index_filename = "sitemap.xml"
-        with open(os.path.join(app.static_folder, sitemap_index_filename), 'w', encoding='utf-8') as index_file:
-            index_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-            index_file.write('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-
-            for sitemap_url in sitemap_index_entries:
-                index_file.write('  <sitemap>\n')
-                index_file.write(f'    <loc>{sitemap_url}</loc>\n')
-                index_file.write(f'    <lastmod>{today}</lastmod>\n')
-                index_file.write('  </sitemap>\n')
-
-            index_file.write('</sitemapindex>\n')
-
-        return jsonify({
-            'success': True,
-            'message': f'Generated {sitemap_counter} sitemap files and index',
-            'sitemap_url': f"{base_url}/sitemap.xml"
-        })
-
-    except Exception as e:
-        print(f"Error generating sitemaps: {e}")
-        return jsonify({
-            'success': False,
-            'message': f'Error generating sitemaps: {str(e)}'
-        }), 500
-
-
-
-@app.route('/sitemap.xml')
-def sitemap_index():
-    base_url = "https://pwsdelta.com"  # Change to your actual domain
-
-    # Get counts
-    total_cards = session.query(func.count(CardDetails.id)).scalar()
-    total_products = session.query(Products).count()
-
-    urls_per_sitemap = 10000
-    num_card_sitemaps = math.ceil(total_cards / urls_per_sitemap)
-    num_product_sitemaps = math.ceil(total_products / urls_per_sitemap)
-
-    sitemap_index = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    sitemap_index += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-
-    # Add card sitemaps
-    for i in range(num_card_sitemaps):
-        sitemap_index += '  <sitemap>\n'
-        sitemap_index += f'    <loc>{base_url}/sitemap-card-{i + 1}.xml</loc>\n'
-        sitemap_index += f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
-        sitemap_index += '  </sitemap>\n'
-
-    # Add product sitemaps
-    for i in range(num_product_sitemaps):
-        sitemap_index += '  <sitemap>\n'
-        sitemap_index += f'    <loc>{base_url}/sitemap-product-{i + 1}.xml</loc>\n'
-        sitemap_index += f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n'
-        sitemap_index += '  </sitemap>\n'
-
-    sitemap_index += '</sitemapindex>'
-
-    return Response(sitemap_index, mimetype='text/xml')
-
 
 
 @app.route('/sitemap-card-<int:sitemap_id>.xml')
@@ -1146,6 +1000,120 @@ def hello_world():
         return render_template("error.html", error=str(e)), 500
     finally:
         session.close()
+
+
+
+
+@app.route('/generate_sitemaps')
+def generate_sitemaps():
+    """
+    Generates sitemap files for CardDetails, splitting them into multiple files
+    if the number of entries exceeds the maximum allowed per sitemap.
+    """
+    db_session = Session()
+    base_url = "https://pwsdelta.com"  # Replace with your actual domain
+
+    # Use the correct static folder
+    sitemap_dir = os.path.join(app.static_folder, 'sitemaps')
+    os.makedirs(sitemap_dir, exist_ok=True)
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    urls_per_sitemap = 9999  # Limit to avoid exceeding sitemap size limits
+    total_cards = 0
+    sitemap_index_entries = []
+
+    logger.info("Starting sitemap generation...")
+
+    try:
+        logger.info("Querying total number of cards...")
+        total_cards = db_session.query(func.count(CardDetails.id)).scalar()
+        logger.info(f"Total cards found: {total_cards}")
+
+        num_sitemaps = math.ceil(total_cards / urls_per_sitemap)
+        logger.info(f"Number of sitemaps to generate: {num_sitemaps}")
+
+        for sitemap_id in range(1, num_sitemaps + 1):
+            sitemap_filename = f"sitemap-cards-{sitemap_id}.xml"
+            sitemap_path = os.path.join(sitemap_dir, sitemap_filename)
+
+            logger.info(f"Generating sitemap file: {sitemap_filename}")
+
+            with open(sitemap_path, 'w', encoding='utf-8') as sitemap_file:
+                sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+                offset = (sitemap_id - 1) * urls_per_sitemap
+                logger.info(f"Querying cards with offset: {offset}, limit: {urls_per_sitemap}")
+                cards = db_session.query(CardDetails).order_by(CardDetails.id).offset(offset).limit(
+                    urls_per_sitemap).all()
+                logger.info(f"Number of cards in this sitemap: {len(cards)}")
+
+                for card in cards:
+                    slug = generate_slug(card.name)
+                    url = f"{base_url}/card/{card.id}/{slug}"  # Adjust URL structure if needed
+
+                    sitemap_file.write('  <url>\n')
+                    sitemap_file.write(f'    <loc>{url}</loc>\n')
+                    sitemap_file.write(f'    <lastmod>{today}</lastmod>\n')
+                    sitemap_file.write('  </url>\n')
+
+                sitemap_file.write('</urlset>\n')
+            sitemap_index_entries.append(f"{base_url}/sitemaps/{sitemap_filename}")
+            logger.info(f"Sitemap file generated: {sitemap_filename}")
+
+        # Create sitemap index file in the static folder
+        sitemap_index_filename = "sitemap.xml"
+        sitemap_index_path = os.path.join(app.static_folder, sitemap_index_filename)  # Correct path
+
+        logger.info(f"Generating sitemap index file: {sitemap_index_filename} in {app.static_folder}")
+
+        with open(sitemap_index_path, 'w', encoding='utf-8') as index_file:
+            index_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+            index_file.write('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
+
+            for sitemap_url in sitemap_index_entries:
+                index_file.write('  <sitemap>\n')
+                index_file.write(f'    <loc>{sitemap_url}</loc>\n')
+                index_file.write(f'    <lastmod>{today}</lastmod>\n')
+                index_file.write('  </sitemap>\n')
+
+            index_file.write('</sitemapindex>\n')
+
+        logger.info("Sitemap index file generated: sitemap.xml")
+
+        return jsonify({'success': True, 'message': 'Sitemaps generated successfully',
+                        'sitemap_index': f"{base_url}/{sitemap_index_filename}"})
+
+    except Exception as e:
+        logger.error(f"Error generating sitemaps: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': f'Error generating sitemaps: {str(e)}'}), 500
+    finally:
+        db_session.close()
+        logger.info("Sitemap generation completed.")
+
+
+@app.route('/sitemap.xml')
+def sitemap_index():
+    """
+    Serves the static sitemap index file.
+    """
+    return app.send_static_file('sitemap.xml')
+
+
+@app.route('/sitemaps/<filename>')
+def serve_sitemap(filename):
+    """
+    Serves individual sitemap files from the static/sitemaps directory.
+    """
+    return app.send_static_file(os.path.join('sitemaps', filename))
+
+
+
+
+
+
+
+
 
 
 
