@@ -577,88 +577,6 @@ def generate_slug(text):
 
 
 
-
-@app.route('/sitemap-card-<int:sitemap_id>.xml')
-def sitemap_card(sitemap_id):
-    # Serve a specific card sitemap file
-    sitemap_path = f"static/sitemaps/sitemap-card-{sitemap_id}.xml"
-
-    if os.path.exists(sitemap_path):
-        with open(sitemap_path, 'r') as f:
-            sitemap_content = f.read()
-        return Response(sitemap_content, mimetype='text/xml')
-    else:
-        return "Sitemap not found", 404
-
-
-@app.route('/sitemap-product-<int:sitemap_id>.xml')
-def sitemap_product(sitemap_id):
-    # Serve a specific product sitemap file
-    sitemap_path = f"static/sitemaps/sitemap-product-{sitemap_id}.xml"
-
-    if os.path.exists(sitemap_path):
-        with open(sitemap_path, 'r') as f:
-            sitemap_content = f.read()
-        return Response(sitemap_content, mimetype='text/xml')
-    else:
-        return "Sitemap not found", 404
-
-
-
-# Keep the original route for backward compatibility
-@app.route('/sitemap-<int:sitemap_id>.xml')
-def sitemap(sitemap_id):
-    # This will serve the existing backward-compatible file
-    sitemap_path = f"static/sitemaps/sitemap-{sitemap_id}.xml"
-
-    if os.path.exists(sitemap_path):
-        with open(sitemap_path, 'r') as f:
-            sitemap_content = f.read()
-        return Response(sitemap_content, mimetype='text/xml')
-    else:
-        return "Sitemap not found", 404
-
-
-
-
-# Flask routes with SEO-friendly URLs
-@app.route('/product/<product_slug>/', methods=['GET'])
-def product_detail(product_slug):
-    product = session.query(Products).filter_by(slug=product_slug).first_or_404()
-    return render_template('product_detail.html', product=product)
-
-
-@app.route('/product/<product_id>', methods=['GET'])
-def get_product(product_id):
-    session = Session()
-    product = session.query(Products).filter(Products.productId == product_id).first()
-
-    if product:
-        product_data = prettify_keys(product)
-        update_product_price(product_id)
-        return render_template('product.html', product=product_data)
-    else:
-        # Handle the case where there are no products in the database
-        return render_template('product.html', product=None, error="No products available.")
-
-
-@app.route('/random_product', methods=['GET'])
-def random_product_view():
-    session = Session()
-
-    # Get a random product from the database
-    random_product = session.query(Products).order_by(func.random()).first()
-
-    if random_product:
-        update_product_price(random_product.productId)
-        product_data = prettify_keys(random_product)
-
-        return render_template('product.html', product=product_data)
-    else:
-        # Handle the case where there are no products in the database
-        return render_template('product.html', product=None, error="No products available.")
-
-
 @app.route('/sets/<set_code>')
 def set_details(set_code):
     session = Session()
@@ -680,18 +598,6 @@ def set_details(set_code):
         )
     finally:
         session.close()
-
-
-@app.route('/ask', methods=['GET'])
-def ask():
-    search_query = request.args.get('query', '', type=str)
-
-    if not search_query:
-        return render_template('search.html', error="Please enter a search query.")
-
-    results = session.query(CardDetails).filter(CardDetails.name.ilike(f'%{search_query}%')).all()
-
-    return render_template('search.html', results=results, query=search_query)
 
 
 
@@ -814,35 +720,35 @@ def search():
     )
 
 
-@app.route('/random', methods=['GET'])
-def random_card_view():
-    card_details = fetch_random_card_from_db()
-
-    update_scryfall_prices(card_details)
-    update_normal_price(card_details.id)
-    record_daily_price(card_details)
-
-    if not card_details:
-        return "Card not found", 404
-
-    cards_by_artist = session.query(CardDetails).filter(
-        CardDetails.artist == card_details.artist,  # Same artist
-        CardDetails.id != card_details.id,  # Exclude the current card
-        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9).all()  # Limit to 6 results
-
-    # Query other printings (same card with different versions/printings)
-    other_printings = session.query(CardDetails).filter(
-        CardDetails.name == card_details.name,
-        CardDetails.id != card_details.id  # Exclude the current card itself
-    ).limit(9).all()
-
-    return render_template(
-        'card.html',
-        card=card_details,
-        cards_by_artist=cards_by_artist,
-        other_printings=other_printings
-    )
+# @app.route('/random', methods=['GET'])
+# def random_card_view():
+#     card_details = fetch_random_card_from_db()
+#
+#     update_scryfall_prices(card_details)
+#     update_normal_price(card_details.id)
+#     record_daily_price(card_details)
+#
+#     if not card_details:
+#         return "Card not found", 404
+#
+#     cards_by_artist = session.query(CardDetails).filter(
+#         CardDetails.artist == card_details.artist,  # Same artist
+#         CardDetails.id != card_details.id,  # Exclude the current card
+#         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+#     ).limit(9).all()  # Limit to 6 results
+#
+#     # Query other printings (same card with different versions/printings)
+#     other_printings = session.query(CardDetails).filter(
+#         CardDetails.name == card_details.name,
+#         CardDetails.id != card_details.id  # Exclude the current card itself
+#     ).limit(9).all()
+#
+#     return render_template(
+#         'card.html',
+#         card=card_details,
+#         cards_by_artist=cards_by_artist,
+#         other_printings=other_printings
+#     )
 
 
 @app.route('/artists/<artist_name>')
@@ -903,10 +809,10 @@ def card_detail(card_id, card_slug):
     # Fetch the card details
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
 
-    if card is not None:
-        update_scryfall_prices(card)
-        update_normal_price(card.id)
-        record_daily_price(card)
+    # if card is not None:
+    #     update_scryfall_prices(card)
+    #     update_normal_price(card.id)
+    #     record_daily_price(card)
 
     if not card:
         return "Card not found", 404
