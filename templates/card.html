@@ -7,7 +7,6 @@
 
 
 
-{#<p><a href="/random">Random</a></p>#}
 <p><a href="https://www.tcgplayer.com/product/{{ card.tcgplayer_id }}" target="_blank">Buy it at TCGPlayer</a></p>
 
 <article class="card-details">
@@ -36,8 +35,6 @@
         <h1>
             {{ card.name }}
         </h1>
-
-
 
         <p><strong>Artist:</strong> <a href="/artists/{{ card.artist }}">{{ card.artist }}</a> </p>
         <p><strong>Set:</strong> <a href="/sets/{{ card.set }}">{{ card.set_name }}</a> </p>
@@ -103,8 +100,6 @@
 
     </div>
 </div>
-
-
 </article>
 
 
@@ -112,7 +107,10 @@
 
 {% if other_printings %}
 <div class="container my-5">
-    <h2 class="text-center">More {{ card.name }} eye candy!</h2>
+    <h2 class="text-center my-5">More {{ card.name }} eye candy!<br>
+
+            <img src="{{ card.image_uris.art_crop }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
+</h2>
     <p class="text-center">Flip through the versions that exist in the MTG universe. Different arts, different frames, same epic card – which one's your favorite?</p>
 
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
