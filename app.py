@@ -894,7 +894,6 @@ def hello_world():
         random_card_ids = cache.get('random_card_ids')
 
         if random_card_ids is not None:
-            # Get all cards in a single query
             random_cards = session.query(
                 CardDetails.id,
                 CardDetails.name,
@@ -908,6 +907,8 @@ def hello_world():
                 CardDetails.image_uris["normal"].label("normal_image")
             ).filter(
                 CardDetails.id.in_(random_card_ids)
+            ).order_by(
+                CardDetails.normal_price.desc()
             ).all()
 
             # Sort them to match the original random order
@@ -930,12 +931,14 @@ def hello_world():
                 CardDetails.normal_price > 0,
                 CardDetails.normal_price.isnot(None),
                 CardDetails.image_uris["normal"].isnot(None)
-            ).order_by(func.random()).limit(137).all() or []
+            ).order_by(
+                CardDetails.normal_price.desc()
+            ).limit(137).all() or []
 
             # Cache the IDs of the selected cards
             if random_cards:
                 ids_to_cache = [card.id for card in random_cards]
-                cache.set('random_card_ids', ids_to_cache, timeout=600)  # Also 10 minutes
+                cache.set('random_card_ids', ids_to_cache, timeout=6)  # Also 10 minutes
 
         # Render the main template
         return render_template(
