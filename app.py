@@ -356,64 +356,6 @@ def record_daily_price(card_detail):
         return False
 
 
-def update_random_entities():
-    """Updates prices for a random card and a random product."""
-    results = {}
-
-    try:
-        # Get and update a random product
-        random_product = session.query(Products).order_by(func.random()).first()
-        if random_product is not None:
-            update_product_price(random_product.productId)
-            results['product'] = {
-                'id': random_product.productId,
-                'name': random_product.cleanName,
-                'status': 'updated'
-            }
-        else:
-            results['product'] = {'status': 'no products available'}
-
-        # Get and update a random card
-        random_card = session.query(CardDetails).order_by(func.random()).first()
-        if random_card is not None:
-            update_normal_price(random_card.id)
-            results['card'] = {
-                'id': random_card.id,
-                'name': random_card.name,
-                'status': 'updated'
-            }
-        else:
-            results['card'] = {'status': 'no cards available'}
-
-    except Exception as e:
-        results['error'] = str(e)
-
-    return results
-
-
-def find_product_by_id_or_random(product_id=None, category_id=None):
-    session = Session()
-
-    if product_id:
-        # Fetch product by productId
-        product = session.query(Products).filter_by(productId=product_id).first()
-        if not product:
-            raise ValueError(f"Product with ID {product_id} not found.")
-        return product
-
-    query = session.query(Products)
-
-    if category_id:
-        # Filter by categoryId if provided
-        query = query.filter_by(categoryId=category_id)
-
-    random_product = query.order_by(func.random()).first()
-    if not random_product:
-        raise ValueError("No products found.")
-
-    return random_product
-
-
 def prettify_keys(sqlalchemy_object):
     if not hasattr(sqlalchemy_object, "__dict__"):
         raise ValueError("Expected a SQLAlchemy object with a __dict__ attribute.")
@@ -809,10 +751,10 @@ def card_detail(card_id, card_slug):
     # Fetch the card details
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
 
-    # if card is not None:
-    #     update_scryfall_prices(card)
-    #     update_normal_price(card.id)
-    #     record_daily_price(card)
+    if card is not None:
+        update_scryfall_prices(card)
+        update_normal_price(card.id)
+        record_daily_price(card)
 
     if not card:
         return "Card not found", 404
