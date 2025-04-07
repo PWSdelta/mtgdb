@@ -196,7 +196,7 @@ def card_spot_price_workflow(card_id):
             print(f"Processing item {card_id}")
             card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
             if card is not None:
-                update_scryfall_prices(card)
+                # update_scryfall_prices(card)
                 update_normal_price(card.id)
                 record_daily_price(card)
 
@@ -592,7 +592,7 @@ def set_details(set_code):
         print(f"Selected card: {card.name if hasattr(card, 'name') else card.id}")
 
         # Execute the full 3-method spot price update workflow.
-        update_scryfall_prices(card)
+        # update_scryfall_prices(card)
         update_normal_price(card.id)
         record_daily_price(card)
 
@@ -790,7 +790,7 @@ def card_detail(card_id, card_slug):
     if not card:
         return "Card not found", 404
 
-    update_scryfall_prices(card)
+    # update_scryfall_prices(card)
     update_normal_price(card.id)
     record_daily_price(card)
 
