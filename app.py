@@ -19,7 +19,7 @@ from flask_apscheduler import APScheduler
 
 from jinja2.ext import LoopControlExtension
 from markupsafe import Markup
-from sqlalchemy import create_engine, Integer, not_, or_
+from sqlalchemy import create_engine, Integer, not_, or_, desc
 from sqlalchemy import inspect
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship, load_only
@@ -178,13 +178,6 @@ def get_other_printings(card, card_id):
         CardDetails.id != card_id,
         CardDetails.normal_price >= 0.01
     ).limit(9999).all()
-
-
-
-
-
-
-
 
 
 
@@ -852,26 +845,31 @@ def card_detail(card_id, card_slug):
 
 
 
-@app.route('/', methods=['GET'])
-def hello_world():
+@app.route('/')
+def index():
+    session = Session()
     try:
         # Try to get the cached hero card ID
         hero_card_id = cache.get('hero_card_id')
+        hero_card = None
 
         if hero_card_id is not None:
             # Get the full hero card by ID
             hero_card = session.query(CardDetails).get(hero_card_id)
-        else:
-            # If not in cache, get a random card
+
+        if hero_card is None:
+            # If not in cache or not found, get a random card
             hero_card = fetch_random_card_from_db()
             if hero_card:
                 # Cache just the ID for 10 minutes
                 cache.set('hero_card_id', hero_card.id, timeout=600)
 
-        # Try to get the cached random card IDs
+        # Now handle the random cards with proper cache implementation
         random_card_ids = cache.get('random_card_ids')
+        random_cards = []
 
-        if random_card_ids is not None:
+        if random_card_ids is not None and random_card_ids:  # Make sure it's not None and not empty
+            # Retrieve cards using cached IDs
             random_cards = session.query(
                 CardDetails.id,
                 CardDetails.name,
@@ -885,15 +883,117 @@ def hello_world():
                 CardDetails.image_uris["normal"].label("normal_image")
             ).filter(
                 CardDetails.id.in_(random_card_ids)
-            ).order_by(
-                CardDetails.normal_price.desc()
-            ).all()
+            ).all() or []  # Use empty list if None
 
-            # Sort them to match the original random order
-            id_to_position = {id: i for i, id in enumerate(random_card_ids)}
-            random_cards.sort(key=lambda card: id_to_position.get(card.id, 0))
-        else:
-            # If not in cache, run the original query
+            if random_cards:
+                # Sort them to match the original random order
+                id_to_position = {id: i for i, id in enumerate(random_card_ids)}
+                random_cards.sort(key=lambda card: id_to_position.get(card.id, 0))
+
+        # If we didn't get cards from cache, generate new ones
+        if not random_cards:
+            random_cards = get_randomized_top_cards(session) or []
+
+        return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
+
+    except Exception as e:
+        import traceback
+        print(f"Error in index route: {e}")
+        print(traceback.format_exc())
+        return f"An error occurred: {e}", 500
+    finally:
+        session.close()
+
+
+
+
+def get_randomized_top_cards(session):
+    """
+    Get 300 randomized cards from the top 3000 highest-priced cards.
+    With improved debugging and flexible criteria.
+    """
+    # First, let's check how many cards meet our criteria at all
+    count = session.query(CardDetails).filter(
+        CardDetails.normal_price.isnot(None),
+        CardDetails.normal_price > 0
+    ).count()
+
+    print(f"DEBUG: Found {count} cards with normal_price > 0 and not null")
+
+    # If we have very few, we should adjust our strategy
+    if count < 100:
+        print("WARNING: Very few cards meet price criteria, relaxing constraints")
+        # Try without the price filter if we have too few cards
+        top_cards = session.query(
+            CardDetails.id,
+            CardDetails.name,
+            CardDetails.artist,
+            CardDetails.oracle_text,
+            CardDetails.printed_text,
+            CardDetails.flavor_text,
+            CardDetails.set_name,
+            CardDetails.tcgplayer_id,
+            CardDetails.normal_price,
+            CardDetails.image_uris["normal"].label("normal_image")
+        ).filter(
+            CardDetails.image_uris["normal"].isnot(None)
+        ).order_by(
+            desc(CardDetails.normal_price)
+        ).limit(3000).all()
+    else:
+        # Original query with normal price criteria
+        top_cards = session.query(
+            CardDetails.id,
+            CardDetails.name,
+            CardDetails.artist,
+            CardDetails.oracle_text,
+            CardDetails.printed_text,
+            CardDetails.flavor_text,
+            CardDetails.set_name,
+            CardDetails.tcgplayer_id,
+            CardDetails.normal_price,
+            CardDetails.image_uris["normal"].label("normal_image")
+        ).filter(
+            CardDetails.normal_price > 0,
+            CardDetails.normal_price.isnot(None),
+            CardDetails.image_uris["normal"].isnot(None)
+        ).order_by(
+            desc(CardDetails.normal_price)
+        ).limit(3000).all()
+
+    print(f"DEBUG: Query returned {len(top_cards)} cards")
+
+    # Check if we got any results
+    if not top_cards:
+        print("ERROR: No cards matched the query criteria in get_randomized_top_cards")
+        return []
+
+    # Step 2: Randomize the results
+    random.shuffle(top_cards)
+
+    # Step 3: Take the first 300 (or fewer if we have less than 300)
+    limit = min(300, len(top_cards))
+    random_selection = top_cards[:limit]
+
+    print(f"DEBUG: Returning {len(random_selection)} randomized cards")
+
+    # Cache the IDs for future use
+    if random_selection:
+        random_card_ids = [card.id for card in random_selection]
+        cache.set('random_card_ids', random_card_ids, timeout=600)  # 10 minutes
+
+    return random_selection
+
+
+@app.route('/random-expensive')
+def random_expensive_cards():
+    session = Session()
+    try:
+        # Try to get the cached random card IDs
+        random_card_ids = cache.get('random_card_ids')
+
+        if random_card_ids is not None:
+            # If we have cached IDs, retrieve those specific cards
             random_cards = session.query(
                 CardDetails.id,
                 CardDetails.name,
@@ -906,31 +1006,25 @@ def hello_world():
                 CardDetails.normal_price,
                 CardDetails.image_uris["normal"].label("normal_image")
             ).filter(
-                CardDetails.normal_price > 0,
-                CardDetails.normal_price.isnot(None),
-                CardDetails.image_uris["normal"].isnot(None)
-            ).order_by(
-                CardDetails.normal_price.desc()
-            ).limit(137).all() or []
+                CardDetails.id.in_(random_card_ids)
+            ).all()
 
-            # Cache the IDs of the selected cards
-            if random_cards:
-                ids_to_cache = [card.id for card in random_cards]
-                cache.set('random_card_ids', ids_to_cache, timeout=6)  # Also 10 minutes
+            # Sort them to match the original random order
+            id_to_position = {id: i for i, id in enumerate(random_card_ids)}
+            random_cards.sort(key=lambda card: id_to_position.get(card.id, 0))
+        else:
+            # If not in cache, generate new random selection
+            random_cards = get_randomized_top_cards()
 
-        # Render the main template
-        return render_template(
-            "home.html",
-            hero_card=hero_card,
-            random_cards=random_cards
-        )
+        return render_template('random_cards.html', cards=random_cards)
+
     except Exception as e:
-        print(f"Transaction failed: {str(e)}")
-        session.rollback()
-        return render_template("error.html", error=str(e)), 500
+        import traceback
+        print(f"Error in random_expensive_cards: {e}")
+        print(traceback.format_exc())
+        return f"An error occurred: {e}", 500
     finally:
         session.close()
-
 
 
 @app.route('/generate_sitemaps')
