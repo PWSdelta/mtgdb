@@ -140,6 +140,52 @@ def cached_card_image(card, timeout=86400):
     card_id = safe_get_attr(card, 'id', '')
     return render_card(card_id)
 
+@cache.cached(timeout=300, key_prefix=lambda: f"cards_by_artist_{request.view_args['card_id']}")
+def get_cards_by_artist(card, card_id):
+    return session.query(
+        CardDetails.id,
+        CardDetails.name,
+        CardDetails.artist,
+        CardDetails.oracle_text,
+        CardDetails.printed_text,
+        CardDetails.flavor_text,
+        CardDetails.set_name,
+        CardDetails.tcgplayer_id,
+        CardDetails.normal_price,
+        CardDetails.image_uris["normal"].label("normal_image")
+    ).filter(
+        CardDetails.artist == card.artist,
+        CardDetails.id != card_id,
+        CardDetails.normal_price >= 0.01
+    ).limit(9999).all()
+
+
+@cache.cached(timeout=300, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
+def get_other_printings(card, card_id):
+    return session.query(
+        CardDetails.id,
+        CardDetails.name,
+        CardDetails.artist,
+        CardDetails.oracle_text,
+        CardDetails.printed_text,
+        CardDetails.flavor_text,
+        CardDetails.set_name,
+        CardDetails.tcgplayer_id,
+        CardDetails.normal_price,
+        CardDetails.image_uris["normal"].label("normal_image")
+    ).filter(
+        CardDetails.oracle_id == card.oracle_id,
+        CardDetails.id != card_id,
+        CardDetails.normal_price >= 0.01
+    ).limit(9999).all()
+
+
+
+
+
+
+
+
 
 
 def run_task_in_background(task_func, *args, **kwargs):
@@ -750,67 +796,58 @@ def card_legacy(card_id):
 def card_detail(card_id, card_slug):
     # Fetch the card details
     card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-
-    if card is not None:
-        update_scryfall_prices(card)
-        update_normal_price(card.id)
-        record_daily_price(card)
-
     if not card:
         return "Card not found", 404
 
+    update_scryfall_prices(card)
+    update_normal_price(card.id)
+    record_daily_price(card)
+
+    cards_by_artist = get_cards_by_artist(card, card_id)
+    other_printings = get_other_printings(card, card_id)
+
     # Query for other printings of the same card
-    other_printings = session.query(
-            CardDetails.id,
-            CardDetails.name,
-            CardDetails.artist,
-            CardDetails.oracle_text,
-            CardDetails.printed_text,
-            CardDetails.flavor_text,
-            CardDetails.set_name,
-            CardDetails.tcgplayer_id,
-            CardDetails.normal_price,
-            CardDetails.image_uris["normal"].label("normal_image")
-        ).filter(
-        CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
-        CardDetails.id != card_id,  # Exclude the current card
-        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9999).all()  # Limit to 6 results
-
-    # Query for cards by the same artist
-    cards_by_artist = session.query(
-            CardDetails.id,
-            CardDetails.name,
-            CardDetails.artist,
-            CardDetails.oracle_text,
-            CardDetails.printed_text,
-            CardDetails.flavor_text,
-            CardDetails.set_name,
-            CardDetails.tcgplayer_id,
-            CardDetails.normal_price,
-            CardDetails.image_uris["normal"].label("normal_image")
-        ).filter(
-        CardDetails.artist == card.artist,  # Same artist
-        CardDetails.id != card_id,  # Exclude the current card
-        CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    ).limit(9999).all()  # Limit to 6 results
-
-    # Access the `all_parts` JSONB field
-    all_parts = card.all_parts or []  # Default to an empty list if None
-
-    # Extract related IDs from the `all_parts` JSON, assuming it's a list of dicts
-    related_ids = [part["id"] for part in all_parts if "id" in part]
-
-    # Query related cards from the database using the extracted IDs
-    related_cards = session.query(CardDetails).filter(CardDetails.id.in_(related_ids)).all()
+    # other_printings = session.query(
+    #         CardDetails.id,
+    #         CardDetails.name,
+    #         CardDetails.artist,
+    #         CardDetails.oracle_text,
+    #         CardDetails.printed_text,
+    #         CardDetails.flavor_text,
+    #         CardDetails.set_name,
+    #         CardDetails.tcgplayer_id,
+    #         CardDetails.normal_price,
+    #         CardDetails.image_uris["normal"].label("normal_image")
+    #     ).filter(
+    #     CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
+    #     CardDetails.id != card_id,  # Exclude the current card
+    #     CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+    # ).limit(9999).all()  # Limit to 6 results
+    #
+    # # Query for cards by the same artist
+    # cards_by_artist = session.query(
+    #         CardDetails.id,
+    #         CardDetails.name,
+    #         CardDetails.artist,
+    #         CardDetails.oracle_text,
+    #         CardDetails.printed_text,
+    #         CardDetails.flavor_text,
+    #         CardDetails.set_name,
+    #         CardDetails.tcgplayer_id,
+    #         CardDetails.normal_price,
+    #         CardDetails.image_uris["normal"].label("normal_image")
+    #     ).filter(
+    #     CardDetails.artist == card.artist,  # Same artist
+    #     CardDetails.id != card_id,  # Exclude the current card
+    #     CardDetails.normal_price >= 0.01  # Price must be at least 0.01
+    # ).limit(9999).all()  # Limit to 6 results
 
     # Render the template with the data
     return render_template(
         'card.html',
         card=card,
         cards_by_artist=cards_by_artist,
-        other_printings=other_printings,
-        related_cards=related_cards
+        other_printings=other_printings
     )
 
 
