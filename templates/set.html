@@ -1,28 +1,43 @@
 {% extends "base.html" %}
-
-
+{% block title %}{{ card.set.name }} Set MTG Prices and Info{% endblock %}
 {% block content %}
 
 
+<div class="container my-5">
+        <h1>{{ card.set_name }} ({{ card.set }})</h1>
 
-<div class="container">
-    <div class="set-metadata">
-        <p><strong>Set Code:</strong> {{ set_metadata.code }}</p>
-        <p><strong>Release Date:</strong> {{ set_metadata.release_date }}</p>
-        <p><strong>Set Type:</strong> {{ set_metadata.set_type }}</p>
-    </div>
+        <!-- Set Metadata Table -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <h2>Set Information</h2>
+                <table class="table table-striped table-hover">
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                    </tr>
 
+                    <tr>
+                        <td><strong>Name: </strong></td>
+                        <td>{{ card.set_name }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
 
+        <!-- Cards in This Set -->
+        <div class="row">
+            <div class="col-12">
+                <h2>Cards in This Set ({{ cards|length }})</h2>
 
-    <div class="container my-5">
-    <h1 class="text-center"><h1>{{ set_metadata.name }}</h1>
-
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-        {% for card in cards %}
-          {% include "_card_component.html" %}
-        {% endfor %}
-    </div>
-</div>
+                <div class="row">
+                    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
+                        {% for card in cards %}
+                            {% include "_card_component.html" %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
 {% endblock %}

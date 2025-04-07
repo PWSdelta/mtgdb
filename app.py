@@ -569,21 +569,47 @@ def generate_slug(text):
 def set_details(set_code):
     session = Session()
     try:
-        # Fetch the set details
-        set_metadata = session.query(SetDetails).filter(SetDetails.code == set_code).first()
-        # If the set doesn't exist, return a 404 response
-        if not set_metadata:
-            return f"No set found with code '{set_code}'", 404
+        # Using the correct field name 'set' instead of 'set_name'
+        print(f"Searching for cards with set = {set_code}")
 
-        # Fetch all cards from that set
-        cards = session.query(CardDetails).filter(CardDetails.set == set_code).all()
+        # Query using the 'set' attribute
+        cards_in_set = session.query(CardDetails).filter(CardDetails.set == set_code).all()
 
-        # Render the template with set details and cards
-        return render_template(
-            "set.html",
-            set_metadata=set_metadata,
-            cards=cards
-        )
+        print(f"Found {len(cards_in_set)} cards for set = {set_code}")
+
+        if not cards_in_set:
+            # Check what set values exist in the database
+            sample_sets = session.query(CardDetails.set).distinct().limit(10).all()
+            print(f"Sample set codes in database: {[s[0] for s in sample_sets]}")
+
+            # Check if there's a close match (in case of capitalization differences)
+            close_matches = session.query(CardDetails.set).filter(
+                CardDetails.set.ilike(f"%{set_code}%")
+            ).distinct().limit(5).all()
+
+            print(f"Possible close matches: {[s[0] for s in close_matches]}")
+
+            return f"Set '{set_code}' not found. Possible sets: {', '.join([s[0] for s in sample_sets])}", 404
+
+        # Pick a random card from the set
+        import random
+        card = random.choice(cards_in_set)
+
+        # Debug: Print which card we're processing
+        print(f"Selected card: {card.name if hasattr(card, 'name') else card.id}")
+
+        # Execute the full 3-method spot price update workflow.
+        update_scryfall_prices(card)
+        update_normal_price(card.id)
+        record_daily_price(card)
+
+        return render_template('set.html', card=card, set_code=set_code, cards=cards_in_set)
+
+    except Exception as e:
+        import traceback
+        print(f"Error in set_details: {e}")
+        print(traceback.format_exc())
+        return f"An error occurred: {e}", 500
     finally:
         session.close()
 
@@ -708,37 +734,6 @@ def search():
     )
 
 
-# @app.route('/random', methods=['GET'])
-# def random_card_view():
-#     card_details = fetch_random_card_from_db()
-#
-#     update_scryfall_prices(card_details)
-#     update_normal_price(card_details.id)
-#     record_daily_price(card_details)
-#
-#     if not card_details:
-#         return "Card not found", 404
-#
-#     cards_by_artist = session.query(CardDetails).filter(
-#         CardDetails.artist == card_details.artist,  # Same artist
-#         CardDetails.id != card_details.id,  # Exclude the current card
-#         CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-#     ).limit(9).all()  # Limit to 6 results
-#
-#     # Query other printings (same card with different versions/printings)
-#     other_printings = session.query(CardDetails).filter(
-#         CardDetails.name == card_details.name,
-#         CardDetails.id != card_details.id  # Exclude the current card itself
-#     ).limit(9).all()
-#
-#     return render_template(
-#         'card.html',
-#         card=card_details,
-#         cards_by_artist=cards_by_artist,
-#         other_printings=other_printings
-#     )
-
-
 @app.route('/artists/<artist_name>')
 def artist_cards(artist_name):
     session = Session()
@@ -746,8 +741,11 @@ def artist_cards(artist_name):
         # Decode the artist_name parameter if it contains URL-encoded spaces (%20)
         artist_name = artist_name.replace('%20', ' ')
 
-        # Query all card entries for this artist
-        cards = session.query(CardDetails).filter(CardDetails.artist == artist_name).limit(999).all()
+        # Query all cards for this artist
+        cards = (session.query(CardDetails)
+                 .filter(CardDetails.artist == artist_name)
+                 .order_by(CardDetails.normal_price.desc())
+                 .limit(999).all())
 
         # If no cards for this artist are found
         if not cards:
@@ -806,6 +804,14 @@ def card_detail(card_id, card_slug):
     cards_by_artist = get_cards_by_artist(card, card_id)
     other_printings = get_other_printings(card, card_id)
 
+    # Render the template with the data
+    return render_template(
+        'card.html',
+        card=card,
+        cards_by_artist=cards_by_artist,
+        other_printings=other_printings
+    )
+
     # Query for other printings of the same card
     # other_printings = session.query(
     #         CardDetails.id,
@@ -842,13 +848,6 @@ def card_detail(card_id, card_slug):
     #     CardDetails.normal_price >= 0.01  # Price must be at least 0.01
     # ).limit(9999).all()  # Limit to 6 results
 
-    # Render the template with the data
-    return render_template(
-        'card.html',
-        card=card,
-        cards_by_artist=cards_by_artist,
-        other_printings=other_printings
-    )
 
 
 
