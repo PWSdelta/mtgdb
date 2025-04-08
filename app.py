@@ -194,11 +194,11 @@ def card_spot_price_workflow(card_id):
 
         try:
             print(f"Processing item {card_id}")
-            card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-            if card is not None:
+            # card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
+            # if card is not None:
                 # update_scryfall_prices(card)
-                update_normal_price(card.id)
-                record_daily_price(card)
+                # update_normal_price(card.id)
+                # record_daily_price(card)
 
         except Exception as e:
             print(f"An error occurred during the card_spot_price_workflow(): {e}")
@@ -593,8 +593,8 @@ def set_details(set_code):
 
         # Execute the full 3-method spot price update workflow.
         # update_scryfall_prices(card)
-        update_normal_price(card.id)
-        record_daily_price(card)
+        # update_normal_price(card.id)
+        # record_daily_price(card)
 
         return render_template('set.html', card=card, set_code=set_code, cards=cards_in_set)
 
@@ -791,8 +791,8 @@ def card_detail(card_id, card_slug):
         return "Card not found", 404
 
     # update_scryfall_prices(card)
-    update_normal_price(card.id)
-    record_daily_price(card)
+    # update_normal_price(card.id)
+    # record_daily_price(card)
 
     cards_by_artist = get_cards_by_artist(card, card_id)
     other_printings = get_other_printings(card, card_id)
@@ -1170,14 +1170,14 @@ def robots():
 def asdf():
     session = Session()
 
-    card_ids = session.query(CardDetails.id).all()
+    # card_ids = session.query(CardDetails.id).all()
 
-    for card in card_ids:
-        current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
-        update_normal_price(current_card.id)
-        record_daily_price(current_card)
+    # for card in card_ids:
+    #     current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
+    #     update_normal_price(current_card.id)
+    #     record_daily_price(current_card)
 
-        time.sleep(random.uniform(0.31, 0.377))
+        # time.sleep(random.uniform(0.31, 0.377))
 
     render_template("home.html", message="Sitemap generation complete")
 
