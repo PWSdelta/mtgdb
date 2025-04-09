@@ -77,7 +77,7 @@ inspector = inspect(engine)
 
 # Access the automatically generated ORM class
 CardDetails = Base.classes.card_details
-Decks = Base.classes.decks
+# Decks = Base.classes.decks
 Products = Base.classes.products
 SpotPrices = Base.classes.spot_prices
 SetDetails = Base.classes.set_details
