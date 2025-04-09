@@ -1,35 +1,27 @@
+import json
+import logging
 import math
 import os
 import random
 import re
-import shutil
-import threading
-import time
-
-import requests
 from datetime import datetime
+from threading import Thread
+
 import numpy as np
-from flask import Flask, url_for, redirect, jsonify
-from flask import request, render_template, Response, stream_with_context
+from flask import Flask, url_for, redirect, jsonify, abort, flash
+from flask import request, render_template, Response
 from flask_caching import Cache
-from flask_caching.jinja2ext import CacheExtension
 from flask_cors import CORS
 from flask_sitemap import Sitemap
-from flask_apscheduler import APScheduler
-
-from jinja2.ext import LoopControlExtension
 from markupsafe import Markup
-from sqlalchemy import create_engine, Integer, not_, or_, desc
+from psycopg2.extensions import JSON, JSONB
+from sqlalchemy import create_engine, Integer, not_, or_, desc, MetaData, Table, Column, String, text
 from sqlalchemy import inspect
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.orm import Session, relationship, load_only
+from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.sync import update
 from sqlalchemy.sql import func
-from sqlalchemy import text
-from threading import Thread
-import logging
-
 
 # Configure logging
 logging.basicConfig(
@@ -51,7 +43,9 @@ CORS(app)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
 
+1
 # Configure cache
 cache_config = {
     'CACHE_TYPE': 'SimpleCache',  # In production, consider 'RedisCache'
@@ -83,6 +77,7 @@ inspector = inspect(engine)
 
 # Access the automatically generated ORM class
 CardDetails = Base.classes.card_details
+Decks = Base.classes.decks
 Products = Base.classes.products
 SpotPrices = Base.classes.spot_prices
 SetDetails = Base.classes.set_details
@@ -352,8 +347,8 @@ def record_daily_price(card_detail):
     Args:
         card_detail: The CardDetail object containing the normal_price
     """
-    from datetime import datetime, time
-    from sqlalchemy import func, update, insert
+    from datetime import datetime
+    from sqlalchemy import func
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
     # Skip if normal_price is None or 0
@@ -1131,15 +1126,6 @@ def serve_sitemap(filename):
     return app.send_static_file(os.path.join('sitemaps', filename))
 
 
-
-
-
-
-
-
-
-
-
 @app.route('/robots.txt')
 def robots():
     return Response("""
@@ -1165,21 +1151,154 @@ def robots():
 
 
 
+# @app.route('/asdf', methods=['GET'])
+# def asdf():
 
-@app.route('/asdf')
-def asdf():
-    session = Session()
+@app.route('/deck/<int:deck_id>')
+def view_deck(deck_id):
+    """
+    Display a single deck and all its card_details.
+    """
+    try:
+        # Get the deck by ID, using our now-working approach
+        with engine.connect() as connection:
+            deck_result = connection.execute(
+                text("SELECT id, filename, document FROM decks WHERE id = :deck_id"),
+                {"deck_id": deck_id}
+            ).fetchone()
 
-    # card_ids = session.query(CardDetails.id).all()
+            if not deck_result:
+                flash(f"Deck with ID {deck_id} not found.", "warning")
+                return redirect(url_for('index'))
 
-    # for card in card_ids:
-    #     current_card = session.query(CardDetails).filter(CardDetails.id == card.id).first()
-    #     update_normal_price(current_card.id)
-    #     record_daily_price(current_card)
+        # Access columns by index since we know this works
+        deck_id_value = deck_result[0]
+        filename_value = deck_result[1]
+        document_value = deck_result[2]  # This should be a dict based on our test
 
-        # time.sleep(random.uniform(0.31, 0.377))
+        # For debugging
+        print(f"Processing deck ID: {deck_id_value}")
+        print(f"Document keys: {document_value.keys() if isinstance(document_value, dict) else 'Not a dict'}")
 
-    render_template("home.html", message="Sitemap generation complete")
+        # Create the final deck dictionary with database fields
+        final_deck = {
+            'id': deck_id_value,
+            'filename': filename_value
+        }
+
+        # Copy over relevant fields from the document
+        # First determine the main data source - document or document['data']
+        deck_data = document_value
+        if isinstance(document_value, dict) and 'data' in document_value:
+            deck_data = document_value['data']
+            print("Using 'data' field from document")
+
+        # Add all available fields from deck_data
+        if isinstance(deck_data, dict):
+            for key, value in deck_data.items():
+                final_deck[key] = value
+            print(f"Added fields from deck_data: {list(deck_data.keys())}")
+
+        # Now collect all cards
+        all_cards = []
+
+        # Add commander cards if present
+        if isinstance(deck_data, dict) and 'commander' in deck_data and deck_data['commander']:
+            commanders = deck_data['commander']
+            if isinstance(commanders, list):
+                for card in commanders:
+                    if isinstance(card, dict):
+                        card_with_flag = card.copy()  # Make a copy to avoid modifying original
+                        card_with_flag['is_commander'] = True
+                        all_cards.append(card_with_flag)
+                print(f"Added {len(commanders)} commander cards")
+
+        # Add regular cards if present
+        if isinstance(deck_data, dict) and 'cards' in deck_data and deck_data['cards']:
+            cards = deck_data['cards']
+            if isinstance(cards, list):
+                for card in cards:
+                    if isinstance(card, dict):
+                        card_with_flag = card.copy()  # Make a copy to avoid modifying original
+                        card_with_flag['is_commander'] = False
+                        all_cards.append(card_with_flag)
+                print(f"Added {len(cards)} regular cards")
+
+        print(f"Total cards to render: {len(all_cards)}")
+
+        # For debugging, print a sample card if available
+        if all_cards:
+            print(f"Sample card keys: {list(all_cards[0].keys())}")
+
+        # Render the template with our data
+        return render_template('deck.html', deck=final_deck, cards=all_cards)
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error when viewing deck {deck_id}:\n{error_details}")
+        flash(f"An error occurred: {str(e)}", "danger")
+        return redirect(url_for('index'))
+
+
+
+@app.route('/decks')
+def list_decks():
+    """List all available decks, limited to 31"""
+    try:
+        with engine.connect() as connection:
+            # Fetch decks with a limit of 31
+            result = connection.execute(text("SELECT id, filename, document FROM decks ORDER BY id LIMIT 31"))
+
+            # Convert result rows to dictionaries properly
+            decks = []
+            for row in result:
+                # Use direct index access which we know works
+                deck_id = row[0]
+                filename = row[1]
+                document = row[2]
+
+                # Create basic deck info
+                deck_info = {
+                    'id': deck_id,
+                    'filename': filename
+                }
+
+                # Extract name and other metadata from document if available
+                if isinstance(document, dict):
+                    deck_data = document.get('data', document)  # Try to get 'data' or use document itself
+
+                    if isinstance(deck_data, dict):
+                        # Add name and other important fields
+                        deck_info['name'] = deck_data.get('name', 'Unnamed Deck')
+                        deck_info['type'] = deck_data.get('type', 'Unknown')
+
+                        # Count cards if available
+                        card_count = 0
+                        if 'cards' in deck_data and isinstance(deck_data['cards'], list):
+                            card_count += len(deck_data['cards'])
+                        if 'commander' in deck_data and isinstance(deck_data['commander'], list):
+                            card_count += len(deck_data['commander'])
+                        deck_info['card_count'] = card_count
+
+                decks.append(deck_info)
+
+        # Now render the template with our list of decks
+        return render_template('deck_list.html', decks=decks)
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+
+        # Display the error instead of redirecting
+        return f"""
+        <h1>Error in Decks Route</h1>
+        <p>Error: {str(e)}</p>
+        <pre>{error_details}</pre>
+        <p><a href="/">Return to Home</a></p>
+        """, 500
+
+
 
 
 if __name__ == '__main__':
