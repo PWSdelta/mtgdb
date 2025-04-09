@@ -178,35 +178,6 @@ def get_other_printings(card, card_id):
 
 
 
-def run_task_in_background(task_func, *args, **kwargs):
-    thread = Thread(target=task_func, args=args, kwargs=kwargs)
-    thread.daemon = True
-    thread.start()
-    return thread
-
-
-# def card_spot_price_workflow(card_id):
-#     with app.app_context():
-#         session = Session()
-
-        # try:
-        #     print(f"Processing item {card_id}")
-            # card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-            # if card is not None:
-                # update_scryfall_prices(card)
-                # update_normal_price(card.id)
-                # record_daily_price(card)
-
-        # except Exception as e:
-        #     print(f"An error occurred during the card_spot_price_workflow(): {e}")
-        #     return None
-
-@app.route('/spot/<card_id>')
-def process_item(card_id):
-    run_task_in_background(card_spot_price_workflow, card_id)
-    return f"Processing started for card {card_id}"
-
-
 # Helper function to safely access attributes using dot notation
 def safe_get_attr(obj, attr, default=None):
     try:
@@ -594,7 +565,6 @@ def set_details(set_code):
         session.close()
 
 
-
 @app.route('/search')
 def search():
     # If there are no search parameters, just render the form
@@ -813,7 +783,7 @@ def index():
             hero_card = fetch_random_card_from_db()
             if hero_card:
                 # Cache just the ID for 10 minutes
-                cache.set('hero_card_id', hero_card.id, timeout=600)
+                cache.set('hero_card_id', hero_card.id, timeout=3600)
 
         # Now handle the random cards with proper cache implementation
         random_card_ids = cache.get('random_card_ids')
@@ -866,6 +836,8 @@ def get_randomized_top_cards(session):
     """
     # First, let's check how many cards meet our criteria at all
     count = session.query(CardDetails).filter(
+        CardDetails.image_uris["normal"].isnot(None),
+        CardDetails.tcgplayer_id.isnot(None),
         CardDetails.normal_price.isnot(None),
         CardDetails.normal_price > 0
     ).count()
@@ -891,7 +863,7 @@ def get_randomized_top_cards(session):
             CardDetails.image_uris["normal"].isnot(None)
         ).order_by(
             desc(CardDetails.normal_price)
-        ).limit(3000).all()
+        ).limit(300).all()
     else:
         # Original query with normal price criteria
         top_cards = session.query(
