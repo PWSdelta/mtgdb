@@ -1095,6 +1095,7 @@ Allow: /
 Sitemap: https://pwsdelta.com/sitemap.xml
 
 # Block specific bots
+# SEO & Analytics Bots
 User-agent: AhrefsBot
 Disallow: /
 
@@ -1107,10 +1108,99 @@ Disallow: /
 User-agent: DotBot
 Disallow: /
 
+User-agent: DataForSeoBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+
+# Search Engine Bots (consider carefully)
 User-agent: Baiduspider
 Disallow: /
 
-User-agent: ClaudeBot
+User-agent: YandexBot
+Disallow: /
+
+User-agent: YandexImages
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: SeznamBot
+Disallow: /
+
+User-agent: Mail.RU_Bot
+Disallow: /
+
+
+# Social Media & Scraper Bots
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: LinkedInBot
+Disallow: /
+
+User-agent: TelegramBot
+Disallow: /
+
+User-agent: TwitterBot
+Disallow: /
+
+User-agent: Pinterestbot
+Disallow: /
+
+User-agent: WhatsApp
+Disallow: /
+
+
+# Archive Bots
+User-agent: ia_archiver
+Disallow: /
+
+User-agent: archive.org_bot
+Disallow: /
+
+# Aggressive Crawler Bots
+User-agent: 360Spider
+Disallow: /
+
+User-agent: AspiegelBot
+Disallow: /
+
+User-agent: ZoominfoBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: SentiBot
+Disallow: /
+
+User-agent: SerendeputyBot
+Disallow: /
+
+# AI & ML Training Bots
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: Claude-Web
 Disallow: /
 
 # Block all bots from specific paths
@@ -1118,7 +1208,12 @@ User-agent: *
 Disallow: /admin/
 Disallow: /private/
 Disallow: /api/
+Disallow: /internal/
+
+# Rate limiting hint (not officially supported but followed by some bots)
+Crawl-delay: 10
 """, mimetype='text/plain')
+
 
 
 
