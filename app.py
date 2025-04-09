@@ -800,45 +800,6 @@ def card_detail(card_id, card_slug):
         other_printings=other_printings
     )
 
-    # Query for other printings of the same card
-    # other_printings = session.query(
-    #         CardDetails.id,
-    #         CardDetails.name,
-    #         CardDetails.artist,
-    #         CardDetails.oracle_text,
-    #         CardDetails.printed_text,
-    #         CardDetails.flavor_text,
-    #         CardDetails.set_name,
-    #         CardDetails.tcgplayer_id,
-    #         CardDetails.normal_price,
-    #         CardDetails.image_uris["normal"].label("normal_image")
-    #     ).filter(
-    #     CardDetails.oracle_id == card.oracle_id,  # Same card identifier (e.g., oracle_id)
-    #     CardDetails.id != card_id,  # Exclude the current card
-    #     CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    # ).limit(9999).all()  # Limit to 6 results
-    #
-    # # Query for cards by the same artist
-    # cards_by_artist = session.query(
-    #         CardDetails.id,
-    #         CardDetails.name,
-    #         CardDetails.artist,
-    #         CardDetails.oracle_text,
-    #         CardDetails.printed_text,
-    #         CardDetails.flavor_text,
-    #         CardDetails.set_name,
-    #         CardDetails.tcgplayer_id,
-    #         CardDetails.normal_price,
-    #         CardDetails.image_uris["normal"].label("normal_image")
-    #     ).filter(
-    #     CardDetails.artist == card.artist,  # Same artist
-    #     CardDetails.id != card_id,  # Exclude the current card
-    #     CardDetails.normal_price >= 0.01  # Price must be at least 0.01
-    # ).limit(9999).all()  # Limit to 6 results
-
-
-
-
 
 @app.route('/')
 def index():
@@ -1180,150 +1141,152 @@ Disallow: /api/
 # @app.route('/asdf', methods=['GET'])
 # def asdf():
 
-@app.route('/deck/<int:deck_id>')
-def view_deck(deck_id):
-    """
-    Display a single deck and all its card_details.
-    """
-    try:
-        # Get the deck by ID, using our now-working approach
-        with engine.connect() as connection:
-            deck_result = connection.execute(
-                text("SELECT id, filename, document FROM decks WHERE id = :deck_id"),
-                {"deck_id": deck_id}
-            ).fetchone()
-
-            if not deck_result:
-                flash(f"Deck with ID {deck_id} not found.", "warning")
-                return redirect(url_for('index'))
-
-        # Access columns by index since we know this works
-        deck_id_value = deck_result[0]
-        filename_value = deck_result[1]
-        document_value = deck_result[2]  # This should be a dict based on our test
-
-        # For debugging
-        print(f"Processing deck ID: {deck_id_value}")
-        print(f"Document keys: {document_value.keys() if isinstance(document_value, dict) else 'Not a dict'}")
-
-        # Create the final deck dictionary with database fields
-        final_deck = {
-            'id': deck_id_value,
-            'filename': filename_value
-        }
-
-        # Copy over relevant fields from the document
-        # First determine the main data source - document or document['data']
-        deck_data = document_value
-        if isinstance(document_value, dict) and 'data' in document_value:
-            deck_data = document_value['data']
-            print("Using 'data' field from document")
-
-        # Add all available fields from deck_data
-        if isinstance(deck_data, dict):
-            for key, value in deck_data.items():
-                final_deck[key] = value
-            print(f"Added fields from deck_data: {list(deck_data.keys())}")
-
-        # Now collect all cards
-        all_cards = []
-
-        # Add commander cards if present
-        if isinstance(deck_data, dict) and 'commander' in deck_data and deck_data['commander']:
-            commanders = deck_data['commander']
-            if isinstance(commanders, list):
-                for card in commanders:
-                    if isinstance(card, dict):
-                        card_with_flag = card.copy()  # Make a copy to avoid modifying original
-                        card_with_flag['is_commander'] = True
-                        all_cards.append(card_with_flag)
-                print(f"Added {len(commanders)} commander cards")
-
-        # Add regular cards if present
-        if isinstance(deck_data, dict) and 'cards' in deck_data and deck_data['cards']:
-            cards = deck_data['cards']
-            if isinstance(cards, list):
-                for card in cards:
-                    if isinstance(card, dict):
-                        card_with_flag = card.copy()  # Make a copy to avoid modifying original
-                        card_with_flag['is_commander'] = False
-                        all_cards.append(card_with_flag)
-                print(f"Added {len(cards)} regular cards")
-
-        print(f"Total cards to render: {len(all_cards)}")
-
-        # For debugging, print a sample card if available
-        if all_cards:
-            print(f"Sample card keys: {list(all_cards[0].keys())}")
-
-        # Render the template with our data
-        return render_template('deck.html', deck=final_deck, cards=all_cards)
-
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        print(f"Error when viewing deck {deck_id}:\n{error_details}")
-        flash(f"An error occurred: {str(e)}", "danger")
-        return redirect(url_for('index'))
-
-
-
-@app.route('/decks')
-def list_decks():
-    """List all available decks, limited to 31"""
-    try:
-        with engine.connect() as connection:
-            # Fetch decks with a limit of 31
-            result = connection.execute(text("SELECT id, filename, document FROM decks ORDER BY id LIMIT 31"))
-
-            # Convert result rows to dictionaries properly
-            decks = []
-            for row in result:
-                # Use direct index access which we know works
-                deck_id = row[0]
-                filename = row[1]
-                document = row[2]
-
-                # Create basic deck info
-                deck_info = {
-                    'id': deck_id,
-                    'filename': filename
-                }
-
-                # Extract name and other metadata from document if available
-                if isinstance(document, dict):
-                    deck_data = document.get('data', document)  # Try to get 'data' or use document itself
-
-                    if isinstance(deck_data, dict):
-                        # Add name and other important fields
-                        deck_info['name'] = deck_data.get('name', 'Unnamed Deck')
-                        deck_info['type'] = deck_data.get('type', 'Unknown')
-
-                        # Count cards if available
-                        card_count = 0
-                        if 'cards' in deck_data and isinstance(deck_data['cards'], list):
-                            card_count += len(deck_data['cards'])
-                        if 'commander' in deck_data and isinstance(deck_data['commander'], list):
-                            card_count += len(deck_data['commander'])
-                        deck_info['card_count'] = card_count
-
-                decks.append(deck_info)
-
-        # Now render the template with our list of decks
-        return render_template('deck_list.html', decks=decks)
-
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-
-        # Display the error instead of redirecting
-        return f"""
-        <h1>Error in Decks Route</h1>
-        <p>Error: {str(e)}</p>
-        <pre>{error_details}</pre>
-        <p><a href="/">Return to Home</a></p>
-        """, 500
-
+#
+#
+# @app.route('/deck/<int:deck_id>')
+# def view_deck(deck_id):
+#     """
+#     Display a single deck and all its card_details.
+#     """
+#     try:
+#         # Get the deck by ID, using our now-working approach
+#         with engine.connect() as connection:
+#             deck_result = connection.execute(
+#                 text("SELECT id, filename, document FROM decks WHERE id = :deck_id"),
+#                 {"deck_id": deck_id}
+#             ).fetchone()
+#
+#             if not deck_result:
+#                 flash(f"Deck with ID {deck_id} not found.", "warning")
+#                 return redirect(url_for('index'))
+#
+#         # Access columns by index since we know this works
+#         deck_id_value = deck_result[0]
+#         filename_value = deck_result[1]
+#         document_value = deck_result[2]  # This should be a dict based on our test
+#
+#         # For debugging
+#         print(f"Processing deck ID: {deck_id_value}")
+#         print(f"Document keys: {document_value.keys() if isinstance(document_value, dict) else 'Not a dict'}")
+#
+#         # Create the final deck dictionary with database fields
+#         final_deck = {
+#             'id': deck_id_value,
+#             'filename': filename_value
+#         }
+#
+#         # Copy over relevant fields from the document
+#         # First determine the main data source - document or document['data']
+#         deck_data = document_value
+#         if isinstance(document_value, dict) and 'data' in document_value:
+#             deck_data = document_value['data']
+#             print("Using 'data' field from document")
+#
+#         # Add all available fields from deck_data
+#         if isinstance(deck_data, dict):
+#             for key, value in deck_data.items():
+#                 final_deck[key] = value
+#             print(f"Added fields from deck_data: {list(deck_data.keys())}")
+#
+#         # Now collect all cards
+#         all_cards = []
+#
+#         # Add commander cards if present
+#         if isinstance(deck_data, dict) and 'commander' in deck_data and deck_data['commander']:
+#             commanders = deck_data['commander']
+#             if isinstance(commanders, list):
+#                 for card in commanders:
+#                     if isinstance(card, dict):
+#                         card_with_flag = card.copy()  # Make a copy to avoid modifying original
+#                         card_with_flag['is_commander'] = True
+#                         all_cards.append(card_with_flag)
+#                 print(f"Added {len(commanders)} commander cards")
+#
+#         # Add regular cards if present
+#         if isinstance(deck_data, dict) and 'cards' in deck_data and deck_data['cards']:
+#             cards = deck_data['cards']
+#             if isinstance(cards, list):
+#                 for card in cards:
+#                     if isinstance(card, dict):
+#                         card_with_flag = card.copy()  # Make a copy to avoid modifying original
+#                         card_with_flag['is_commander'] = False
+#                         all_cards.append(card_with_flag)
+#                 print(f"Added {len(cards)} regular cards")
+#
+#         print(f"Total cards to render: {len(all_cards)}")
+#
+#         # For debugging, print a sample card if available
+#         if all_cards:
+#             print(f"Sample card keys: {list(all_cards[0].keys())}")
+#
+#         # Render the template with our data
+#         return render_template('deck.html', deck=final_deck, cards=all_cards)
+#
+#     except Exception as e:
+#         import traceback
+#         error_details = traceback.format_exc()
+#         print(f"Error when viewing deck {deck_id}:\n{error_details}")
+#         flash(f"An error occurred: {str(e)}", "danger")
+#         return redirect(url_for('index'))
+#
+#
+#
+# @app.route('/decks')
+# def list_decks():
+#     """List all available decks, limited to 31"""
+#     try:
+#         with engine.connect() as connection:
+#             # Fetch decks with a limit of 31
+#             result = connection.execute(text("SELECT id, filename, document FROM decks ORDER BY id LIMIT 31"))
+#
+#             # Convert result rows to dictionaries properly
+#             decks = []
+#             for row in result:
+#                 # Use direct index access which we know works
+#                 deck_id = row[0]
+#                 filename = row[1]
+#                 document = row[2]
+#
+#                 # Create basic deck info
+#                 deck_info = {
+#                     'id': deck_id,
+#                     'filename': filename
+#                 }
+#
+#                 # Extract name and other metadata from document if available
+#                 if isinstance(document, dict):
+#                     deck_data = document.get('data', document)  # Try to get 'data' or use document itself
+#
+#                     if isinstance(deck_data, dict):
+#                         # Add name and other important fields
+#                         deck_info['name'] = deck_data.get('name', 'Unnamed Deck')
+#                         deck_info['type'] = deck_data.get('type', 'Unknown')
+#
+#                         # Count cards if available
+#                         card_count = 0
+#                         if 'cards' in deck_data and isinstance(deck_data['cards'], list):
+#                             card_count += len(deck_data['cards'])
+#                         if 'commander' in deck_data and isinstance(deck_data['commander'], list):
+#                             card_count += len(deck_data['commander'])
+#                         deck_info['card_count'] = card_count
+#
+#                 decks.append(deck_info)
+#
+#         # Now render the template with our list of decks
+#         return render_template('deck_list.html', decks=decks)
+#
+#     except Exception as e:
+#         import traceback
+#         error_details = traceback.format_exc()
+#
+#         # Display the error instead of redirecting
+#         return f"""
+#         <h1>Error in Decks Route</h1>
+#         <p>Error: {str(e)}</p>
+#         <pre>{error_details}</pre>
+#         <p><a href="/">Return to Home</a></p>
+#         """, 500
+#
 
 
 
