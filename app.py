@@ -35,6 +35,10 @@ logging.basicConfig(
 app = Flask(__name__)
 ext = Sitemap(app)
 
+# Determine environment
+ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
+
+
 logger = logging.getLogger(__name__)
 
 CORS(app)
@@ -45,14 +49,26 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
 
-1
-# Configure cache
-cache_config = {
-    'CACHE_TYPE': 'SimpleCache',  # In production, consider 'RedisCache'
-    'CACHE_DEFAULT_TIMEOUT': 86400  # 24 hours in seconds
-}
 
+# Configure cache based on environment
+if ENVIRONMENT == 'development':
+    cache_config = {
+        'CACHE_TYPE': 'SimpleCache',
+        'CACHE_DEFAULT_TIMEOUT': 86400  # 24 hours in seconds
+    }
+else:
+    # Minimal Redis config for testing in non-dev environments
+    cache_config = {
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_REDIS_HOST': os.environ.get('REDIS_HOST', 'localhost'),
+        'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', 6379)),
+        'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hours in seconds
+        'CACHE_KEY_PREFIX': 'pwsdelta_'  # Prefix all cache keys
+    }
+
+# Initialize cache
 cache = Cache(app, config=cache_config)
+
 
 
 # Add the extension from flask_caching
