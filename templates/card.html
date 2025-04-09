@@ -7,10 +7,8 @@
 
 
 
-<p><a href="https://www.tcgplayer.com/product/{{ card.tcgplayer_id }}" target="_blank">Buy it at TCGPlayer</a></p>
-
 <article class="card-details">
-<div class="row">
+<div class="row" style="margin-top: 5em;">
     <div class="col">
         <img src="{{ card.image_uris.normal }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
     </div>
@@ -64,6 +62,21 @@
             <p><em>{{ card.flavor_text | safe }}</em></p>
         {% endif %}
 
+
+        <!-- After card text and before accordion -->
+        <div class="tcgplayer-button-container my-4 text-center">
+
+
+              <a href="https://www.tcgplayer.com/search/magic/product?q={{ card.name|urlencode }}"
+                   target="_blank"
+                   class="btn btn-success btn-lg shadow-sm">
+                    <i class="bi bi-cart-plus me-2"></i>
+                    Find at TCGPlayer
+                </a>
+            <div class="text-muted small mt-2">
+                Support our site through our affiliate link
+            </div>
+        </div>
 
 
         <div class="accordion my-5" id="richCardAccordion">
