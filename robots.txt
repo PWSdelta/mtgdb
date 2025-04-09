@@ -1,0 +1,37 @@
+@app.route('/robots.txt')
+def robots():
+    return Response("""
+User-agent: *
+Allow: /
+Sitemap: https://pwsdelta.com/sitemap.xml
+
+# Block specific bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+# Block all bots from specific paths
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Disallow: /api/
+""", mimetype='text/plain')
+
+
+
+10.214.154.196 - - [09/Apr/2025:04:22:30 +0000] "GET /card/13b0928b-0469-4e3a-a8c8-1df26abb6707/mountain HTTP/1.1" 200 1398445 "-" "Mozilla/5.0 (compatible; MJ12bot/v1.4.8; http://mj12bot.com/)"
+10.214.125.196 - - [09/Apr/2025:04:22:57 +0000] "GET /card/d55d6a17-9991-43bd-889c-4faf6aa8fc67/dragonlord-silumgar HTTP/1.1" 200 877821 "-" "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ClaudeBot/1.0; +claudebot@anthropic.com)"

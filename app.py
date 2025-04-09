@@ -1129,10 +1129,36 @@ def serve_sitemap(filename):
 @app.route('/robots.txt')
 def robots():
     return Response("""
-        User-agent: *
-        Allow: /
-        Sitemap: https://pwsdelta.com/sitemap.xml
-        """, mimetype='text/plain')
+User-agent: *
+Allow: /
+Sitemap: https://pwsdelta.com/sitemap.xml
+
+# Block specific bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+# Block all bots from specific paths
+User-agent: *
+Disallow: /admin/
+Disallow: /private/
+Disallow: /api/
+""", mimetype='text/plain')
+
 
 
 # @app.route('/wp-admin/setup-config.php', methods=['GET', 'POST'])
