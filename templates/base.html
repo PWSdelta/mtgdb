@@ -7,9 +7,19 @@
         <meta name="google-site-verification" content="hlf4Zk1mOsxscqCd3r3YIaD62ZdvhyKlLi2GP-c1Mfo" />
         <title>{% block title %}Magic The Gathering Database | PWSDELTA{% endblock %}</title>
 
-    {% block meta_description %}
-    <meta name="description" content="100k+ Magic: The Gathering cards from every set. Search, browse and price check your favorite MTG cards. " />
-    {% endblock %}
+
+
+{% block meta_description %}
+    {% if card %}
+        <meta name="description" content="{{ card.name }} price | {{ card.set_name }} Magic: The Gathering Card" />
+    {% elif set %}
+        <meta name="description" content="{{ set.name }} - Magic: The Gathering Set Prices and Information" />
+    {% elif search_results %}
+        <meta name="description" content="Magic: The Gathering Card Search Results" />
+    {% else %}
+        <meta name="description" content="100k+ Magic: The Gathering cards from every set. Search, browse and price check your favorite MTG cards." />
+    {% endif %}
+{% endblock %}
 
 
     <!-- Keywords -->
