@@ -149,10 +149,11 @@ def get_cards_by_artist(card, card_id):
         CardDetails.normal_price,
         CardDetails.image_uris["normal"].label("normal_image")
     ).filter(
+        CardDetails.tcgplayer_id.isnot(None),
         CardDetails.artist == card.artist,
         CardDetails.id != card_id,
         CardDetails.normal_price >= 0.01
-    ).limit(9999).all()
+    ).limit(31).all()
 
 
 @cache.cached(timeout=86400, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
@@ -169,10 +170,11 @@ def get_other_printings(card, card_id):
         CardDetails.normal_price,
         CardDetails.image_uris["normal"].label("normal_image")
     ).filter(
+        CardDetails.tcgplayer_id.isnot(None),
         CardDetails.oracle_id == card.oracle_id,
         CardDetails.id != card_id,
         CardDetails.normal_price >= 0.01
-    ).limit(9999).all()
+    ).limit(31).all()
 
 
 
@@ -183,21 +185,21 @@ def run_task_in_background(task_func, *args, **kwargs):
     return thread
 
 
-def card_spot_price_workflow(card_id):
-    with app.app_context():
-        session = Session()
+# def card_spot_price_workflow(card_id):
+#     with app.app_context():
+#         session = Session()
 
-        try:
-            print(f"Processing item {card_id}")
+        # try:
+        #     print(f"Processing item {card_id}")
             # card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
             # if card is not None:
                 # update_scryfall_prices(card)
                 # update_normal_price(card.id)
                 # record_daily_price(card)
 
-        except Exception as e:
-            print(f"An error occurred during the card_spot_price_workflow(): {e}")
-            return None
+        # except Exception as e:
+        #     print(f"An error occurred during the card_spot_price_workflow(): {e}")
+        #     return None
 
 @app.route('/spot/<card_id>')
 def process_item(card_id):
@@ -500,16 +502,6 @@ def generate_sitemap_files():
 
             sitemap_file.write('</urlset>')
 
-#
-# @app.route('/asdf')
-# def asdf():
-#     generate_sitemap_files()
-#
-#     return 200
-
-
-import requests
-
 
 def update_scryfall_prices(card_details):
     """
@@ -781,7 +773,10 @@ def card_legacy(card_id):
 @app.route('/card/<card_id>/<card_slug>')
 def card_detail(card_id, card_slug):
     # Fetch the card details
-    card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
+    card = (session.query(CardDetails)
+            .filter(CardDetails.id == card_id,
+                    CardDetails.tcgplayer_id.isnot(None)
+                    ).first())
     if not card:
         return "Card not found", 404
 
@@ -838,7 +833,8 @@ def index():
                 CardDetails.normal_price,
                 CardDetails.image_uris["normal"].label("normal_image")
             ).filter(
-                CardDetails.id.in_(random_card_ids)
+                CardDetails.id.in_(random_card_ids),
+                CardDetails.tcgplayer_id.isnot(None)
             ).all() or []  # Use empty list if None
 
             if random_cards:
