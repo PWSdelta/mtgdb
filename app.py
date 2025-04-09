@@ -135,7 +135,7 @@ def cached_card_image(card, timeout=86400):
     card_id = safe_get_attr(card, 'id', '')
     return render_card(card_id)
 
-@cache.cached(timeout=300, key_prefix=lambda: f"cards_by_artist_{request.view_args['card_id']}")
+@cache.cached(timeout=86400, key_prefix=lambda: f"cards_by_artist_{request.view_args['card_id']}")
 def get_cards_by_artist(card, card_id):
     return session.query(
         CardDetails.id,
@@ -155,7 +155,7 @@ def get_cards_by_artist(card, card_id):
     ).limit(9999).all()
 
 
-@cache.cached(timeout=300, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
+@cache.cached(timeout=86400, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
 def get_other_printings(card, card_id):
     return session.query(
         CardDetails.id,
