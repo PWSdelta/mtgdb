@@ -56,7 +56,7 @@ app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
 if ENVIRONMENT == 'development':
     cache_config = {
         'CACHE_TYPE': 'SimpleCache',
-        'CACHE_DEFAULT_TIMEOUT': 86400  # 24 hours in seconds
+        'CACHE_DEFAULT_TIMEOUT': 600  # 24 hours in seconds
     }
 else:
     # Minimal Redis config for testing in non-dev environments
@@ -64,7 +64,7 @@ else:
         'CACHE_TYPE': 'RedisCache',
         'CACHE_REDIS_HOST': os.environ.get('REDIS_HOST', 'localhost'),
         'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', 6379)),
-        'CACHE_DEFAULT_TIMEOUT': 86400,  # 24 hours in seconds
+        'CACHE_DEFAULT_TIMEOUT': 600,  # 24 hours in seconds
         'CACHE_KEY_PREFIX': 'pwsdelta_'  # Prefix all cache keys
     }
 
@@ -124,7 +124,7 @@ session = Session()
 
 # Create a template filter that renders and caches card images
 @app.template_filter('cached_card_image')
-def cached_card_image(card, timeout=86400):
+def cached_card_image(card, timeout=600):
     # Create a nested function that will be memoized with the specific timeout
     @cache.memoize(timeout=timeout)
     def render_card(card_id):
@@ -157,7 +157,7 @@ def cached_card_image(card, timeout=86400):
     card_id = safe_get_attr(card, 'id', '')
     return render_card(card_id)
 
-@cache.cached(timeout=86400, key_prefix=lambda: f"cards_by_artist_{request.view_args['card_id']}")
+@cache.cached(timeout=600, key_prefix=lambda: f"cards_by_artist_{request.view_args['card_id']}")
 def get_cards_by_artist(card, card_id):
     return session.query(
         CardDetails.id,
@@ -178,7 +178,7 @@ def get_cards_by_artist(card, card_id):
     ).limit(31).all()
 
 
-@cache.cached(timeout=86400, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
+@cache.cached(timeout=600, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
 def get_other_printings(card, card_id):
     return session.query(
         CardDetails.id,
