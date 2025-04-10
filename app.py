@@ -23,6 +23,7 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
+from google.cloud import storage
 
 # Configure logging
 logging.basicConfig(
@@ -110,6 +111,10 @@ CardDetails.product = relationship(
     primaryjoin="foreign(card_details.tcgplayer_id) == products.productId",
     back_populates="card_details"
 )
+
+# Initialize the Google Cloud Storage client with explicit credentials
+storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
+bucket_name = 'mtgdb-stash-289370'
 
 
 Session = sessionmaker(bind=engine)
@@ -1649,6 +1654,44 @@ def update_rulings_endpoint():
                 "success": False,
                 "message": f"Error updating rulings: {str(e)}"
             }), 500
+
+
+
+@app.route('/asdf', methods=['GET'])
+def asdf():
+    try:
+        # Initialize the Google Cloud Storage client with explicit credentials
+        storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
+        bucket_name = 'mtgdb-stash-289370'
+
+        # Get bucket
+        bucket = storage_client.bucket(bucket_name)
+
+        # List blobs (files) in the bucket, limited to 10
+        blobs = list(bucket.list_blobs(max_results=10))
+
+        # Create a list of object details
+        objects = []
+        for blob in blobs:
+            objects.append({
+                'name': blob.name,
+                'size': blob.size,
+                'updated': blob.updated.isoformat() if blob.updated else None,
+                'content_type': blob.content_type
+            })
+
+        return jsonify({
+            'success': True,
+            'objects': objects,
+            'count': len(objects)
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 
 
 
