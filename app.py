@@ -6,8 +6,9 @@ import random
 import re
 from datetime import datetime
 from threading import Thread
-
+import time
 import numpy as np
+import requests
 from flask import Flask, url_for, redirect, jsonify, abort, flash
 from flask import request, render_template, Response
 from flask_caching import Cache
@@ -15,7 +16,7 @@ from flask_cors import CORS
 from flask_sitemap import Sitemap
 from markupsafe import Markup
 from psycopg2.extensions import JSON, JSONB
-from sqlalchemy import create_engine, Integer, not_, or_, desc, MetaData, Table, Column, String, text
+from sqlalchemy import create_engine, Integer, not_, or_, desc, MetaData, Table, Column, String, text, cast
 from sqlalchemy import inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.automap import automap_base
@@ -1366,6 +1367,289 @@ Crawl-delay: 10
 #         <p><a href="/">Return to Home</a></p>
 #         """, 500
 #
+
+
+def fetch_and_store_rulings(card_id, index=None, total=None):
+    """
+    Fetch rulings for a specific card from Scryfall and store them in the card_details table
+    """
+    start_time = time.time()
+    progress_info = f"[{index}/{total}]" if index is not None and total is not None else ""
+
+    # Create a new session for this operation
+    session = Session()
+
+    try:
+        # Get the card from database
+        card = session.query(CardDetails).get(card_id)
+
+        if not card:
+            app.logger.warning(f"{progress_info} Card not found with ID {card_id}")
+            return {"count": 0, "status": "not_found", "time": time.time() - start_time}
+
+        if not card.rulings_uri:
+            app.logger.info(f"{progress_info} No rulings URI for card: {card.name} ({card_id})")
+            return {"count": 0, "status": "no_uri", "time": time.time() - start_time}
+
+        # Fetch rulings from Scryfall
+        app.logger.info(f"{progress_info} Fetching rulings for card: {card.name} ({card_id})")
+
+        try:
+            response = requests.get(card.rulings_uri, timeout=10)
+
+            if response.status_code != 200:
+                app.logger.error(
+                    f"{progress_info} Failed to fetch rulings for {card.name} ({card_id}): Status {response.status_code}")
+                return {"count": 0, "status": "api_error", "time": time.time() - start_time}
+
+            # Process the rulings
+            rulings_data = response.json().get('data', [])
+
+            if not rulings_data:
+                app.logger.info(f"{progress_info} No rulings found for {card.name} ({card_id})")
+                # For empty rulings, assign an empty list directly (proper JSONB empty array)
+                card.rulings = []
+                session.commit()
+                return {"count": 0, "status": "no_rulings", "time": time.time() - start_time}
+
+            # With JSONB column, assign the Python object directly (no JSON serialization needed)
+            card.rulings = rulings_data
+            session.commit()
+
+            elapsed_time = time.time() - start_time
+            app.logger.info(
+                f"{progress_info} Stored {len(rulings_data)} rulings for {card.name} ({card_id}) in {elapsed_time:.2f}s")
+            return {"count": len(rulings_data), "status": "success", "time": elapsed_time}
+
+        except requests.exceptions.Timeout:
+            app.logger.error(f"{progress_info} Timeout fetching rulings for {card.name} ({card_id})")
+            return {"count": 0, "status": "timeout", "time": time.time() - start_time}
+        except Exception as e:
+            app.logger.error(f"{progress_info} Error fetching rulings for {card.name} ({card_id}): {str(e)}")
+            return {"count": 0, "status": "error", "error": str(e), "time": time.time() - start_time}
+    finally:
+        # Always close the session
+        session.close()
+
+
+def update_card_rulings_batch(batch_size=1000, offset=0):
+    """
+    Update rulings for a batch of cards in the database
+
+    Args:
+        batch_size: Number of cards to process in this batch
+        offset: Starting offset for pagination
+
+    Returns:
+        dict: Statistics about the update process
+    """
+    session = Session()
+    stats = {
+        "total_cards": 0,
+        "processed_cards": 0,
+        "rulings_found": 0,
+        "success_count": 0,
+        "error_count": 0,
+        "not_found_count": 0,
+        "no_uri_count": 0,
+        "no_rulings_count": 0,
+        "api_error_count": 0,
+        "timeout_count": 0,
+        "start_time": datetime.now().isoformat(),
+        "end_time": None,
+        "total_time": 0,
+        "recent_cards": [],
+        "failed_cards": [],
+        "batch_size": batch_size,
+        "offset": offset
+    }
+
+    try:
+        # Get total count of cards needing rulings update
+        from sqlalchemy import text
+
+        total_count = session.query(func.count(CardDetails.id)) \
+            .filter(CardDetails.rulings_uri.isnot(None)) \
+            .filter(or_(
+            CardDetails.rulings.is_(None),
+            text("rulings::text = '[]'"),
+            text("rulings::text = '{}'")
+        )).scalar()
+
+        # Get the batch of cards
+        cards = session.query(CardDetails) \
+            .filter(CardDetails.rulings_uri.isnot(None)) \
+            .filter(or_(
+            CardDetails.rulings.is_(None),
+            text("rulings::text = '[]'"),
+            text("rulings::text = '{}'")
+        )) \
+            .order_by(CardDetails.name) \
+            .limit(batch_size) \
+            .offset(offset) \
+            .all()
+
+        # Update stats with card counts
+        stats["total_cards"] = total_count
+        stats["total_remaining"] = total_count - offset
+        stats["cards_in_batch"] = len(cards)
+
+        if not cards:
+            app.logger.info(f"No cards found for batch update at offset {offset}")
+            stats["end_time"] = datetime.now().isoformat()
+            stats["total_time"] = 0
+            return stats
+
+        app.logger.info(f"Found {len(cards)} cards to update (total: {total_count})")
+
+        # Process each card
+        start_time = time.time()
+        for i, card in enumerate(cards):
+            card_id = card.id
+            card_index = offset + i + 1
+
+            # Skip cards without rulings URI
+            if not card.rulings_uri:
+                stats["no_uri_count"] += 1
+                continue
+
+            # Update the rulings
+            result = fetch_and_store_rulings(card_id, card_index, total_count)
+            stats["processed_cards"] += 1
+
+            # Update stats based on result
+            if result["status"] == "success":
+                stats["success_count"] += 1
+                stats["rulings_found"] += result["count"]
+                stats["recent_cards"].append({
+                    "id": card_id,
+                    "name": card.name,
+                    "rulings_count": result["count"],
+                    "time": result["time"]
+                })
+            elif result["status"] == "not_found":
+                stats["not_found_count"] += 1
+            elif result["status"] == "no_uri":
+                stats["no_uri_count"] += 1
+            elif result["status"] == "no_rulings":
+                stats["no_rulings_count"] += 1
+            elif result["status"] == "api_error":
+                stats["api_error_count"] += 1
+                stats["failed_cards"].append({
+                    "id": card_id,
+                    "name": card.name,
+                    "error": "API Error"
+                })
+            elif result["status"] == "timeout":
+                stats["timeout_count"] += 1
+                stats["failed_cards"].append({
+                    "id": card_id,
+                    "name": card.name,
+                    "error": "Timeout"
+                })
+            else:
+                stats["error_count"] += 1
+                stats["failed_cards"].append({
+                    "id": card_id,
+                    "name": card.name,
+                    "error": result.get("error", "Unknown error")
+                })
+
+            # Sleep briefly to avoid overloading the API
+            time.sleep(0.13)
+
+        # Calculate total time
+        end_time = time.time()
+        elapsed = end_time - start_time
+
+        stats["end_time"] = datetime.now().isoformat()
+        stats["total_time"] = elapsed
+
+        return stats
+
+    except Exception as e:
+        app.logger.exception(f"Error in update_card_rulings_batch: {str(e)}")
+        stats["error"] = str(e)
+        stats["end_time"] = datetime.now().isoformat()
+        return stats
+
+    finally:
+        session.close()
+
+
+
+# Make sure this is defined at the module level, not inside another function or try block
+@app.route('/api/update-rulings', methods=['GET'])
+def update_rulings_endpoint():
+    """API endpoint to update card rulings from Scryfall with pagination and filtering"""
+    # Optional: Require an API key for security
+    api_key = request.args.get('api_key')
+    if app.config.get('API_KEY') and api_key != app.config.get('API_KEY'):
+        return jsonify({"success": False, "message": "Unauthorized access"}), 401
+
+    card_id = request.args.get('card_id')
+
+    if card_id:
+        # Process a single card by ID
+        try:
+            app.logger.info(f"Starting update for single card: {card_id}")
+            result = fetch_and_store_rulings(card_id)
+            return jsonify({
+                "success": True,
+                "message": f"Stored {result['count']} rulings for card ID: {card_id} in {result['time']:.2f}s",
+                "details": result
+            })
+        except Exception as e:
+            app.logger.exception(f"Error in update-rulings endpoint for card {card_id}: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"Error updating rulings for card {card_id}: {str(e)}"
+            }), 500
+    else:
+        # Process a batch of cards
+        try:
+            # Get batch parameters
+            batch_size = request.args.get('batch_size', 999999, type=int)
+            offset = request.args.get('offset', 0, type=int)
+
+            # Limit batch size to reasonable values
+            if batch_size > 999999:
+                batch_size = 999999
+
+            app.logger.info(f"Starting batch update with size={batch_size}, offset={offset}")
+            result = update_card_rulings_batch(batch_size, offset)
+
+            # Calculate next offset
+            next_offset = offset + batch_size
+            has_more = result.get("total_remaining", 0) > batch_size
+
+            # Create a summary message
+            summary = (
+                f"Updated rulings for {result['processed_cards']} of {result['total_cards']} cards in "
+                f"{result['total_time']:.1f} seconds. Found {result['rulings_found']} total rulings. "
+                f"Success: {result['success_count']}, Errors: {result['error_count']}"
+            )
+
+            if has_more:
+                summary += f" | {result['total_remaining'] - batch_size} cards remaining."
+
+            app.logger.info(f"Batch update complete: {summary}")
+
+            return jsonify({
+                "success": True,
+                "message": summary,
+                "next_offset": next_offset if has_more else None,
+                "has_more": has_more,
+                "total_remaining": max(0, result.get("total_remaining", 0) - batch_size),
+                "details": result
+            })
+        except Exception as e:
+            app.logger.exception(f"Error in batch update-rulings endpoint: {str(e)}")
+            return jsonify({
+                "success": False,
+                "message": f"Error updating rulings: {str(e)}"
+            }), 500
+
 
 
 

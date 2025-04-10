@@ -81,20 +81,7 @@
 
         <div class="accordion my-5" id="richCardAccordion">
 
-            {% if related_cards %}
-            <div class="accordion-item">
-            <h2 class="accordion-header">
-              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
-                Related Cards
-              </button>
-            </h2>
-            <div id="collapseOne" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">
-              <div class="accordion-body">
-                  <p>{{ card.all_parts }}</p>
-              </div>
-            </div>
-            </div>
-            {% endif %}
+            {% include "_card_rulings.html" %}
 
 
           <div class="accordion-item">
@@ -110,6 +97,14 @@
             </div>
           </div>
         </div>
+
+
+
+
+
+
+
+
 
     </div>
 </div>

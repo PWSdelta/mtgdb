@@ -1,0 +1,42 @@
+{#{% if card.rulings_uri %}#}
+{#<div class="card mb-4">#}
+{#  <div class="card-header">#}
+{#    <h5 class="mb-0">Official Rulings</h5>#}
+{#  </div>#}
+{#  <div class="card-body">#}
+{#    <div class="list-group">#}
+{#      {% for ruling in card.rulings %}#}
+{#        <div class="list-group-item">#}
+{#          <div class="d-flex w-100 justify-content-between">#}
+{#            <h6 class="mb-1">{{ ruling.published_at }}</h6>#}
+{#          </div>#}
+{#          <p class="mb-1">{{ ruling.comment }}</p>#}
+{#        </div>#}
+{#      {% endfor %}#}
+{#    </div>#}
+{#  </div>#}
+{#</div>#}
+{#{% endif %}#}
+
+
+<div class="accordion-item">
+<h2 class="accordion-header">
+  <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+    Official Rulings
+  </button>
+</h2>
+<div id="collapseOne" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">
+  <div class="accordion-body">
+      <div class="list-group">
+      {% for ruling in card.rulings %}
+        <div class="list-group-item">
+          <div class="d-flex w-100 justify-content-between">
+            <h6 class="mb-1">{{ ruling.published_at }}</h6>
+          </div>
+          <p class="mb-1">{{ ruling.comment }}</p>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+</div>
