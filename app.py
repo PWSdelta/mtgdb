@@ -1,29 +1,25 @@
-import json
 import logging
 import math
 import os
 import random
 import re
-from datetime import datetime
-from threading import Thread
 import time
+from datetime import datetime
+
 import numpy as np
 import requests
-from flask import Flask, url_for, redirect, jsonify, abort, flash
+from flask import Flask, url_for, redirect, jsonify
 from flask import request, render_template, Response
 from flask_caching import Cache
 from flask_cors import CORS
 from flask_sitemap import Sitemap
 from markupsafe import Markup
-from psycopg2.extensions import JSON, JSONB
-from sqlalchemy import create_engine, Integer, not_, or_, desc, MetaData, Table, Column, String, text, cast
+from sqlalchemy import create_engine, Integer, not_, or_, desc
 from sqlalchemy import inspect
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
-from google.cloud import storage
 
 # Configure logging
 logging.basicConfig(
