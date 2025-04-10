@@ -827,7 +827,7 @@ def index():
             ).filter(
                 CardDetails.id.in_(random_card_ids),
                 CardDetails.tcgplayer_id.isnot(None)
-            ).all() or []  # Use empty list if None
+            ).limit(67).all() or []  # Use empty list if None
 
             if random_cards:
                 # Sort them to match the original random order
