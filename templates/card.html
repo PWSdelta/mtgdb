@@ -3,14 +3,106 @@
 
 
 {% block content %}
+
+    <style>
+        .card-image-container {
+            overflow: hidden;
+            border-radius: 4.75% / 3.5%;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
+        }
+
+        .card-image-container img {
+            transition: transform 0.5s ease;
+            width: 100%;
+        }
+
+        .card-image-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 16px rgba(0,0,0,0.3);
+        }
+
+        .card-image-container:hover img {
+            transform: scale(1.04);
+        }
+
+        .mana-symbol {
+          display: inline-block;
+          width: 24px;
+          height: 24px;
+          margin: 0 2px;
+          background-size: cover;
+          vertical-align: middle;
+          border-radius: 50%;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .badge-animated {
+          transition: all 0.3s ease;
+        }
+
+        .badge-animated:hover {
+          transform: scale(1.1);
+          box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+
+        .mythic-glow {
+          animation: mythicPulse 2s infinite;
+        }
+
+        @keyframes mythicPulse {
+          0% { box-shadow: 0 0 0 rgba(220, 53, 69, 0.5); }
+          50% { box-shadow: 0 0 10px rgba(220, 53, 69, 0.8); }
+          100% { box-shadow: 0 0 0 rgba(220, 53, 69, 0.5); }
+        }
+
+.card-name-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.set-symbol {
+  width: 28px;
+  height: 28px;
+  margin-left: 10px;
+  opacity: 0.8;
+}
+
+.card-name {
+  margin: 0;
+  background: linear-gradient(45deg, #000, #333);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+}
+
+.card-name-rare {
+  background: linear-gradient(45deg, #FFD700, #FFA500);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+.card-name-mythic {
+  background: linear-gradient(45deg, #FF4500, #8B0000);
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+
+    </style>
+
+    <!-- Wrap your image in this container -->
+
+
 <div class="container">
-
-
 
 <article class="card-details">
 <div class="row" style="margin-top: 5em;">
     <div class="col">
-        <img src="{{ card.image_uris.normal }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
+        <div class="card-image-container">
+            <img src="{{ card.image_uris.normal }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
+        </div>
     </div>
     <div class="col">
         {% if card.rarity %}
@@ -30,13 +122,33 @@
             {% endif %}
         {% endif %}
 
-        <h1>
-            {{ card.name }}
-        </h1>
+{#        <h1>#}
+{#            {{ card.name }}#}
+{#        </h1>#}
 
-        <p><strong>Artist:</strong> <a href="/artists/{{ card.artist }}">{{ card.artist }}</a> </p>
+        <div class="card-name-container">
+          <h1 class="card-name{% if card.rarity == 'rare' %} card-name-rare{% elif card.rarity == 'mythic' %} card-name-mythic{% endif %}">
+            {{ card.name }}
+          </h1>
+          <img src="https://gatherer.wizards.com/Handlers/Image.ashx?type=symbol&set={{ card.set }}&size=small&rarity={{ card.rarity[0] | upper }}" class="set-symbol" alt="{{ card.set }} symbol">
+        </div>
+
+
+        <p>
+          <strong>Artist:</strong>
+          <a href="/artists/{{ card.artist }}"
+             data-bs-toggle="popover"
+             data-bs-trigger="hover"
+             data-bs-placement="top"
+             data-bs-content="View all cards illustrated by {{ card.artist }}"
+             data-bs-title="Artist Info">
+            {{ card.artist }}
+          </a>
+        </p>
+
         <p><strong>Set:</strong> <a href="/sets/{{ card.set }}">{{ card.set_name }}</a> </p>
-        <p><strong>Mana Cost:</strong> {{ card.mana_cost }}</p>
+        <p><strong>Mana Cost:</strong> <span id="mana-cost-display">{{ card.mana_cost }}</span></p>
+
 
         <p>
             <span
@@ -79,24 +191,123 @@
         </div>
 
 
+
         <div class="accordion my-5" id="richCardAccordion">
+            {% if card.rulings and card.rulings|length > 0 %}
+                {% include "_card_rulings.html" %}
+            {% endif %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                        Card Legalities
+                    </button>
+                </h2>
+                <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">
+                    <div class="accordion-body">
+                        {%  include "_legalities_info.html" %}
+                    </div>
+                </div>
 
-            {% include "_card_rulings.html" %}
 
+{#                <div class="accordion-item">#}
+{#            <h2 class="accordion-header">#}
+{#                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFormats" aria-expanded="false" aria-controls="collapseFormats">#}
+{#                    Popular Decks & Formats <i class="bi bi-trophy ms-2 text-warning"></i>#}
+{#                </button>#}
+{#            </h2>#}
+{#            <div id="collapseFormats" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">#}
+{#                <div class="accordion-body">#}
+{#                    <div class="row">#}
+{#                        <div class="col-md-6">#}
+{#                            <h5>Format Popularity</h5>#}
+{#                            <div class="progress-stacked mb-3">#}
+{#                                <div class="progress" role="progressbar" style="width: 35%" aria-valuenow="35" aria-valuemin="0" aria-valuemax="100">#}
+{#                                    <div class="progress-bar bg-primary">Commander (35%)</div>#}
+{#                                </div>#}
+{#                                <div class="progress" role="progressbar" style="width: 25%" aria-valuenow="25" aria-valuemin="0" aria-valuemax="100">#}
+{#                                    <div class="progress-bar bg-success">Modern (25%)</div>#}
+{#                                </div>#}
+{#                                <div class="progress" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100">#}
+{#                                    <div class="progress-bar bg-info">Standard (20%)</div>#}
+{#                                </div>#}
+{#                                <div class="progress" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100">#}
+{#                                    <div class="progress-bar bg-warning">Other (20%)</div>#}
+{#                                </div>#}
+{#                            </div>#}
+{#                        </div>#}
+{##}
+{#                        <div class="col-md-6">#}
+{#                            <h5>Top Decks</h5>#}
+{#                            <ul class="list-group">#}
+{#                                <li class="list-group-item d-flex justify-content-between align-items-center">#}
+{#                                    {{ card.name }} Combo Deck#}
+{#                                    <span class="badge bg-primary rounded-pill">14 cards</span>#}
+{#                                </li>#}
+{#                                <li class="list-group-item d-flex justify-content-between align-items-center">#}
+{#                                    {{ card.type_line.split(' — ')[0] }} Tribal#}
+{#                                    <span class="badge bg-primary rounded-pill">8 cards</span>#}
+{#                                </li>#}
+{#                                <li class="list-group-item d-flex justify-content-between align-items-center">#}
+{#                                    {{ card.color_identity | join('') }} Goodstuff#}
+{#                                    <span class="badge bg-primary rounded-pill">3 cards</span>#}
+{#                                </li>#}
+{#                            </ul>#}
+{#                        </div>#}
+{#                    </div>#}
+{#                </div>#}
+{#            </div>#}
+{#        </div>#}
+{##}
+{#            <div class="accordion-item">#}
+{#                  <h2 class="accordion-header">#}
+{#                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseRelated" aria-expanded="false" aria-controls="collapseRelated">#}
+{#                      Related Cards <i class="bi bi-diagram-3 ms-2"></i>#}
+{#                    </button>#}
+{#                  </h2>#}
+{#                  <div id="collapseRelated" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">#}
+{#                    <div class="accordion-body">#}
+{#                      <div class="nav nav-tabs mb-3" id="relationshipTabs" role="tablist">#}
+{#                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#similar-tab" type="button">Similar Cards</button>#}
+{#                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#combo-tab" type="button">Combos With</button>#}
+{#                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#synergy-tab" type="button">Synergy</button>#}
+{#                      </div>#}
+{#                #}
+{#                      <div class="tab-content">#}
+{#                        <div class="tab-pane fade show active" id="similar-tab">#}
+{#                          <div class="row row-cols-1 row-cols-md-3 g-4 related-cards-container">#}
+{#                            {% for i in range(3) %}#}
+{#                              <div class="col">#}
+{#                                <div class="card h-100 related-card">#}
+{#                                  <div class="card-body">#}
+{#                                    <h5 class="card-title">Similar Card {{ i+1 }}</h5>#}
+{#                                    <p class="card-text">Cards with similar effects or themes to {{ card.name }}</p>#}
+{#                                  </div>#}
+{#                                </div>#}
+{#                              </div>#}
+{#                            {% endfor %}#}
+{#                          </div>#}
+{#                        </div>#}
+{#                #}
+{#                        <div class="tab-pane fade" id="combo-tab">#}
+{#                          <p>Cards that form known combos with {{ card.name }}</p>#}
+{#                        </div>#}
+{#                #}
+{#                        <div class="tab-pane fade" id="synergy-tab">#}
+{#                          <p>Cards with synergistic effects with {{ card.name }}</p>#}
+{#                        </div>#}
+{#                      </div>#}
+{#                    </div>#}
+{#                  </div>#}
+{#                </div>#}
 
-          <div class="accordion-item">
-            <h2 class="accordion-header">
-              <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                Card Legalities
-              </button>
-            </h2>
-            <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">
-              <div class="accordion-body">
-                  {%  include "_legalities_info.html" %}
-              </div>
             </div>
-          </div>
         </div>
+
+
+
+
+
+
 
 
 
@@ -168,6 +379,22 @@
 
 
 
+<script>
+$(document).ready(function() {
+  // Parse mana cost and convert to symbols
+  const manaCost = "{{ card.mana_cost }}";
+  let formattedCost = manaCost;
+
+  if (manaCost) {
+    // Replace {X}, {R}, {G}, etc. with icon spans
+    formattedCost = manaCost.replace(/\{([^}]+)\}/g, function(match, symbol) {
+      return `<span class="mana-symbol" title="${symbol}" style="background-image: url('https://gatherer.wizards.com/Handlers/Image.ashx?size=small&name=${symbol}&type=symbol')"></span>`;
+    });
+  }
+
+  $('#mana-cost-display').html(formattedCost);
+});
+</script>
 
 
 
