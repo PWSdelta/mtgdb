@@ -838,6 +838,11 @@ def index():
         if not random_cards:
             random_cards = get_randomized_top_cards(session) or []
 
+            # THIS IS THE MISSING PART - Cache the IDs of the newly generated random cards
+            if random_cards:
+                new_random_card_ids = [card.id for card in random_cards]
+                cache.set('random_card_ids', new_random_card_ids, timeout=3600)  # Cache for 1 hour
+
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
     except Exception as e:
@@ -847,6 +852,7 @@ def index():
         return f"An error occurred: {e}", 500
     finally:
         session.close()
+
 
 
 
