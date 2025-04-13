@@ -52,7 +52,7 @@ app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
 if ENVIRONMENT == 'development':
     cache_config = {
         'CACHE_TYPE': 'SimpleCache',
-        'CACHE_DEFAULT_TIMEOUT': 600  # 24 hours in seconds
+        'CACHE_DEFAULT_TIMEOUT': 600
     }
 else:
     # Minimal Redis config for testing in non-dev environments
@@ -60,7 +60,7 @@ else:
         'CACHE_TYPE': 'RedisCache',
         'CACHE_REDIS_HOST': os.environ.get('REDIS_HOST', 'localhost'),
         'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', 6379)),
-        'CACHE_DEFAULT_TIMEOUT': 600,  # 24 hours in seconds
+        'CACHE_DEFAULT_TIMEOUT': 600,
         'CACHE_KEY_PREFIX': 'pwsdelta_'  # Prefix all cache keys
     }
 

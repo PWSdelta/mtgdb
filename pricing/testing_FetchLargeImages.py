@@ -15,7 +15,7 @@ DB_CONFIG = {
 }
 
 # Folder to save images
-SAVE_DIR = 'large/'
+SAVE_DIR = 'images/'
 
 
 # Function to sanitize filenames (remove invalid characters)
@@ -39,23 +39,23 @@ def create_uniqueness_constraint():
         # Check if the index already exists
         check_query = """
         SELECT 1 FROM pg_indexes 
-        WHERE indexname = 'normal_image_name_unique_idx';
+        WHERE indexname = 'large_image_name_unique_idx';
         """
         cursor.execute(check_query)
         index_exists = cursor.fetchone() is not None
 
         if not index_exists:
-            # Create a unique index on normal_image_name
+            # Create a unique index on large_image_name
             create_index_query = """
-            CREATE UNIQUE INDEX normal_image_name_unique_idx 
-            ON card_details (normal_image_name) 
-            WHERE normal_image_name IS NOT NULL;
+            CREATE UNIQUE INDEX large_image_name_unique_idx 
+            ON card_details (large_image_name) 
+            WHERE large_image_name IS NOT NULL;
             """
             cursor.execute(create_index_query)
             conn.commit()
-            print("Created unique index on normal_image_name column.")
+            print("Created unique index on large_image_name column.")
         else:
-            print("Unique index on normal_image_name already exists.")
+            print("Unique index on large_image_name already exists.")
 
         cursor.close()
         conn.close()
@@ -78,7 +78,7 @@ def download_images():
         query = """
             SELECT id, image_uris, name, set_name, tcgplayer_id, lang
             FROM card_details
-            WHERE image_uris IS NOT NULL AND (normal_image_name IS NULL OR normal_image_name = '');
+            WHERE image_uris IS NOT NULL AND (large_image_name IS NULL OR normal_image_name = '');
         """
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -98,8 +98,8 @@ def download_images():
                 continue
 
             # Extract the `normal` key from the JSONB object
-            if 'normal' in image_uris:
-                image_url = image_uris['normal']
+            if 'large' in image_uris:
+                image_url = image_uris['large']
 
                 try:
                     # Download the image
