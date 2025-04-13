@@ -287,6 +287,78 @@ def analyze_card(card_name, temperature=1.0, topic="commander_deck"):
     return True
 
 
+def analyze_random_card(card_name, temperature=1.0, topic="commander_deck"):
+    """Analyze a given Magic: The Gathering card"""
+    print(f"\n=== Analyzing {card_name} ===")
+    print(f"Temperature: {temperature}")
+    print(f"Topic: {topic}")
+
+    # Test connections first
+    # ollama_ok = test_ollama_connection()
+    # mongo_ok = test_mongodb_connection()
+    #
+    # if not ollama_ok or not mongo_ok:
+    #     print("\n⚠️ Connection issues detected. Please fix before continuing.")
+    #     return False
+
+    # Generate the initial comprehensive analysis
+    print(f"\nGenerating comprehensive analysis for {card_name}...")
+
+    prompt = f"""
+    Analyze the Magic: The Gathering card '{card_name}' for {topic}.
+
+    Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
+
+    **Power Level and Overview**
+
+    **Common Strategies**
+
+    **Budget & Progression Options**
+
+    **Off-Meta Interactions**
+
+    **Meta Position**
+
+    **Deck Building**
+
+    **Meta Positioning**
+
+    **Combo Potential**
+
+    **Budget Considerations**
+
+    **Technical Play**
+
+    **Card Interactions**
+
+    **Legality & Historical Rulings**
+
+    CRITICAL: DO NOT INCLUDE any of the following in your response:
+    - DO NOT include any section numbers
+    - DO NOT include any dividing lines (---)
+    - DO NOT include the phrase "Common Follow-up Categories:"
+    - DO NOT include any ## headings
+
+    Just provide a continuous analysis with simple bolded section headers only.
+
+    In your response, wrap the names of real Magic: The Gathering cards with double brackets like this: [[Card Name]].
+    """
+
+    analysis = generate_llm_response(prompt, temperature=temperature)
+
+    if not analysis:
+        return False
+
+    print("\n=== Analysis Results ===")
+    print(analysis)
+
+    # Store the initial analysis
+    store_analysis_in_db(card_name, topic, analysis, temperature)
+
+    print("Comprehensive analysis completed and saved to database.")
+    return True
+
+
 def parse_arguments():
     """Parse command line arguments with defaults"""
     parser = argparse.ArgumentParser(description="MTG Commander Card Analysis Tool")
@@ -302,8 +374,6 @@ def parse_arguments():
 
     # Parse the arguments
     return parser.parse_args()
-
-
 
 
 def main():
