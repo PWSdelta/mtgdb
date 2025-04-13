@@ -427,6 +427,162 @@ def analyze_single_card(temperature, topic, model, cards_collection, selected_ca
     # Return the card name, card ID, analysis ID, and word counts for further processing
     return card_name, card_id, analysis_id, word_counts
 
+def analyze_card_queue(temperature=1.0, topic="commander_deck", model="gemma3:latest", max_cards=None):
+    """
+    Analyze a queue of cards sequentially, starting with a random one
+    and prioritizing based on mention count
+
+    Parameters:
+    - temperature: Temperature setting for text generation
+    - topic: Analysis topic (e.g., "commander_deck")
+    - model: LLM model to use
+    - max_cards: Maximum number of cards to analyze (None for unlimited)
+
+    Returns:
+    - bool: Success status
+    """
+    # Connect to MongoDB
+    client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
+    db = client["infinityplex_dev"]
+    cards_collection = db["cards"]
+
+    # Sets to track processed and queued cards to avoid duplicates
+    processed_cards = set()
+    card_queue = []  # List of (card_name, related_to, priority) tuples
+
+    # Track relationships for the chain
+    previous_card_id = None
+    previous_analysis_id = None
+
+    # Start with a random card
+    print(f"\n{'=' * 50}")
+    print(f"STARTING CARD ANALYSIS QUEUE")
+    if max_cards:
+        print(f"Maximum cards to process: {max_cards}")
+    else:
+        print("Processing entire queue (no maximum limit)")
+    print(f"{'=' * 50}")
+
+    # Initial random card analysis
+    result = analyze_single_card(temperature, topic, model, cards_collection)
+    if not result:
+        return False
+
+    first_card_name, first_card_id, first_analysis_id, word_counts = result
+    processed_cards.add(first_card_name)
+    previous_card_id = first_card_id
+    previous_analysis_id = first_analysis_id
+
+    # Add mentioned cards to the queue with their priority (mention count)
+    for card_name, count in word_counts.most_common():
+        if card_name != first_card_name and card_name not in processed_cards:
+            relation = {
+                "card_id": previous_card_id,
+                "analysis_id": previous_analysis_id,
+                "relationship_type": "mentioned_in",
+                "mention_count": count
+            }
+            card_queue.append((card_name, relation, count))
+
+    # Display initial queue
+    print("\nInitial card queue:")
+    for i, (card_name, _, priority) in enumerate(card_queue[:10]):
+        print(f"{i + 1}. {card_name} (priority: {priority})")
+    if len(card_queue) > 10:
+        print(f"...and {len(card_queue) - 10} more")
+
+    # Process the queue sequentially
+    cards_analyzed = 1  # Count the first card
+
+    try:
+        while card_queue:
+            # Check if we've reached the maximum (if specified)
+            if max_cards and cards_analyzed >= max_cards:
+                print(f"\nReached maximum card limit ({max_cards}). Stopping.")
+                break
+
+            # Sort the queue by priority (highest first)
+            card_queue.sort(key=lambda x: x[2], reverse=True)
+
+            # Get the highest priority card
+            next_card_name, relation, priority = card_queue.pop(0)
+
+            print(f"\n{'=' * 50}")
+            print(f"PROCESSING QUEUED CARD #{cards_analyzed + 1}")
+            print(f"Card: {next_card_name} (Priority: {priority})")
+            print(f"Queue size: {len(card_queue)} cards remaining")
+            print(f"{'=' * 50}")
+
+            # Check if card exists in database
+            card_doc = cards_collection.find_one({"name": next_card_name})
+            if not card_doc:
+                print(f"Card '{next_card_name}' not found in database. Skipping.")
+                continue
+
+            # Analyze the card
+            result = analyze_single_card(temperature, topic, model, cards_collection,
+                                         card_doc, relation)
+
+            if not result:
+                print(f"Failed to analyze '{next_card_name}'. Continuing with next card.")
+                continue
+
+            # Track the new card's details
+            current_card_name, current_card_id, current_analysis_id, new_word_counts = result
+            processed_cards.add(current_card_name)
+            previous_card_id = current_card_id
+            previous_analysis_id = current_analysis_id
+            cards_analyzed += 1
+
+            # Add newly mentioned cards to the queue
+            new_additions = 0
+            for card_name, count in new_word_counts.most_common():
+                if card_name not in processed_cards and not any(card_name == q[0] for q in card_queue):
+                    relation = {
+                        "card_id": current_card_id,
+                        "analysis_id": current_analysis_id,
+                        "relationship_type": "mentioned_in",
+                        "mention_count": count
+                    }
+                    card_queue.append((card_name, relation, count))
+                    new_additions += 1
+
+            # Provide queue stats
+            if new_additions > 0:
+                print(f"\nAdded {new_additions} new cards to the queue")
+
+            print(f"\nQueue status: {len(card_queue)} cards")
+            print(f"Cards processed so far: {cards_analyzed}")
+
+            # Periodically show the top items in the queue (every 5 cards or when requested)
+            if cards_analyzed % 5 == 0 or new_additions > 0:
+                print("\nTop cards in queue:")
+                for i, (card_name, _, priority) in enumerate(card_queue[:5]):
+                    print(f"{i + 1}. {card_name} (priority: {priority})")
+                if len(card_queue) > 5:
+                    print(f"...and {len(card_queue) - 5} more")
+
+            # Optional: Save progress periodically
+            if cards_analyzed % 10 == 0:
+                print(f"\nProgress checkpoint: {cards_analyzed} cards analyzed")
+
+    except KeyboardInterrupt:
+        print("\n\nProcess interrupted by user. Saving progress...")
+        # Here you could implement saving the current queue state if needed
+    except Exception as e:
+        print(f"\n\nError encountered: {str(e)}")
+        # Log the error for debugging
+
+    print(f"\nAnalysis complete. Processed {cards_analyzed} cards total.")
+    print(f"Sample of processed cards: {', '.join(list(processed_cards)[:10])}")
+
+    if card_queue:
+        print(f"\nRemaining in queue: {len(card_queue)} cards")
+        print(f"You can run this function again to continue processing.")
+
+    return True
+
+
 def main():
     # Parse command line arguments for options
     parser = argparse.ArgumentParser(description="MTG Random Card Analysis Tool")
@@ -444,7 +600,11 @@ def main():
     args = parser.parse_args()
 
     # Analyze a chain of related cards
-    analyze_card_chain(args.temperature, args.topic, args.model, args.chain_depth)
+    # analyze_card_chain(args.temperature, args.topic, args.model, args.chain_depth)
+
+
+    analyze_card_queue(temperature=0.97, topic="commander_deck", model="gemma3:latest")
+
     return 0
 
 
