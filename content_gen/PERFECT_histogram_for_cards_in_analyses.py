@@ -1,6 +1,7 @@
+import re
+
 import pymongo
 import collections
-import re
 
 # Connect to MongoDB
 client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
@@ -9,25 +10,30 @@ client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
 db = client["infinityplex_dev"]
 collection = db["card_analyses"]
 
-# Initialize an empty string to store the concatenated content
-content_string = ""
+# Initialize an empty dictionary to store word frequencies
+word_counts = {}
 
 # Iterate over each document in the collection
 for document in collection.find():
     # Extract the 'content' field from the document
     content = document["content"]
 
-    # Append the content to the string
-    content_string += content + "\n"
+    # Split the content into words enclosed in double square brackets
+    bracketed_terms = re.findall(r'\]\[(.*?)\]', content)
 
-# Use regular expression to find all terms enclosed in [[ ]]
-pattern = r'\[\[(.*?)\]\]'
-bracketed_terms = re.findall(pattern, content_string)
+    # Iterate over each term in the bracketed terms
+    for term in bracketed_terms:
+        # Remove any extra brackets from the term
+        term = term.strip('[]')
 
-# Create a counter for these terms
-word_counts = collections.Counter(bracketed_terms)
+        if term in word_counts:
+            # Increment the count if it's already in the dictionary
+            word_counts[term] += 1
+        else:
+            # Initialize the count to 1 if it's not in the dictionary
+            word_counts[term] = 1
 
 # Print the histogram
 print("Histogram of words enclosed in double square brackets:")
-for word, count in word_counts.most_common():
+for word, count in sorted(word_counts.items(), key=lambda x: x[1], reverse=True):
     print(f"[[{word}]]: {count}")

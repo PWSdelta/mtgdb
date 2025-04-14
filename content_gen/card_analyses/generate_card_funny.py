@@ -4,11 +4,10 @@ import random
 import re
 import collections
 
-
 import requests
 
 
-def generate_llm_response(prompt, temperature=1.0, model="llama3:latest"):
+def generate_llm_response(prompt, temperature=0.919, model="llama3:latest"):
     """Generate a response using a local Ollama LLM"""
     try:
         response = requests.post(
@@ -31,12 +30,13 @@ def generate_llm_response(prompt, temperature=1.0, model="llama3:latest"):
         print(f"Error generating LLM response: {e}")
         return ""
 
+
 def store_analysis_in_db(card_name, card_id, topic, analysis, temperature, related_to=None):
     """Store the analysis in the database with proper references"""
     # Connect to MongoDB
     client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
     db = client["infinityplex_dev"]
-    collection = db["card_analyses"]
+    collection = db["card_funnies"]
 
     # Create a document to insert with proper card_id reference
     analysis_doc = {
@@ -57,7 +57,8 @@ def store_analysis_in_db(card_name, card_id, topic, analysis, temperature, relat
 
     return result.inserted_id
 
-def analyze_random_card(temperature=1.0, topic="commander_deck", model="gemma3:latest"):
+
+def analyze_random_card(temperature=0.919, topic="commander_deck", model="gemma3:1b"):
     """Analyze a random Magic: The Gathering card from the database that hasn't been analyzed yet"""
     # Connect to MongoDB
     client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
@@ -110,31 +111,23 @@ def analyze_random_card(temperature=1.0, topic="commander_deck", model="gemma3:l
     prompt = f"""
     Analyze the Magic: The Gathering card '{card_name}' for {topic}.
 
-    Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
+    ```
+    You are Tina, a seasoned Magic: The Gathering player in her late 30s. You’re thoughtful, witty, and genuinely enthusiastic about the game, but you also appreciate its complexities and the work that goes
+    into card design. You're not a pro player, but you've been playing competitively and casually for a long time, and you have a really good understanding of mechanics, color philosophy, and the history of
+    the game. You often analyze cards with a blend of appreciation, a touch of playful teasing, and a keen eye for what *really* works (and what doesn't). You're talking to a friend who's relatively new to
+    Magic, but wants to understand the card on a deeper level. You use casual, friendly language and avoid jargon unless you explain it.
 
-    **Power Level and Overview**
+    Please provide a commentary on the card '{card_name}'. Your commentary should:
 
-    **Common Strategies**
-
-    **Budget & Progression Options**
-
-    **Off-Meta Interactions**
-
-    **Meta Position**
-
-    **Deck Building**
-
-    **Meta Positioning**
-
-    **Combo Potential**
-
-    **Budget Considerations**
-
-    **Technical Play**
-
-    **Card Interactions**
-
-    **Legality & Historical Rulings**
+    *   **Start with a brief, accessible overview of what the card does.** Assume your friend might not fully grasp the card's function immediately.
+    *   **Discuss the card's design from a color philosophy perspective.** What color(s) is this card, and how does it exemplify those colors' values and ideals? Are there any unexpected or interesting
+    choices made in its design related to its color identity?
+    *   **Analyze the card's power level and potential use in a deck.** Is it strong? Is it niche? Where would you realistically play this card? Avoid strict power level scores. Instead, describe *how* it
+    feels to play and what kind of deck it fits into.
+    *   **Share a little personal anecdote or observation about the card, showing your genuine connection to the game.** This could be a memory of playing the card, a thought about its art, or a comparison
+    to another card.
+    *   **Maintain a friendly, conversational tone, as if speaking directly to a friend.** Use phrases like "You know what I mean?" and "Honestly..." to create warmth and relatability.
+    *   **Aim for approximately 357-809 words.**
 
     CRITICAL: DO NOT INCLUDE any of the following in your response:
     - DO NOT include any section numbers
@@ -142,7 +135,7 @@ def analyze_random_card(temperature=1.0, topic="commander_deck", model="gemma3:l
     - DO NOT include the phrase "Common Follow-up Categories:"
     - DO NOT include any ## headings
 
-    Just provide a continuous analysis with simple bolded section headers only.
+    Just provide a continuous analysis with simple, friendly, fluid style.
 
     In your response, wrap the names of real Magic: The Gathering cards with double brackets like this: [[Card Name]].
     """
@@ -178,6 +171,7 @@ def analyze_random_card(temperature=1.0, topic="commander_deck", model="gemma3:l
 
     print("\nComprehensive analysis completed and saved to database.")
     return True
+
 
 def find_related_card(word_counts, original_card_name, cards_collection, analyzed_cards=None):
     """
@@ -224,7 +218,7 @@ def find_related_card(word_counts, original_card_name, cards_collection, analyze
     return None, None
 
 
-def analyze_card_chain(temperature=1.0, topic="commander_deck", model="gemma3:latest", depth=2):
+def analyze_card_chain(temperature=0.919, topic="commander_deck", model="gemma3:1b", depth=2):
     """Analyze a chain of related cards, starting with a random one"""
     # Connect to MongoDB
     client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
@@ -289,6 +283,7 @@ def analyze_card_chain(temperature=1.0, topic="commander_deck", model="gemma3:la
 
     print(f"\nCompleted analysis chain of {len(analyzed_cards)} cards: {', '.join(analyzed_cards)}")
     return True
+
 
 def analyze_single_card(temperature, topic, model, cards_collection, selected_card=None, related_to=None):
     """
@@ -355,31 +350,21 @@ def analyze_single_card(temperature, topic, model, cards_collection, selected_ca
     prompt = f"""
     Analyze the Magic: The Gathering card '{card_name}' for {topic}.
 
-    Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
+    You are Anya, a seasoned Magic: The Gathering player in her late 30s. You’re thoughtful, witty, and genuinely enthusiastic about the game, but you also appreciate its complexities and the work that goes
+    into card design. You're not a pro player, but you've been playing competitively and casually for a long time, and you have a really good understanding of mechanics, color philosophy, and the history of
+    the game. You often analyze cards with a blend of appreciation, a touch of playful teasing, and a keen eye for what *really* works (and what doesn't). You're talking to a friend who's relatively new to
+    Magic, but wants to understand the card on a deeper level. You use casual, friendly language and avoid jargon unless you explain it.
 
-    **Power Level and Overview**
+    Please provide a commentary on the card '{card_name}'. Your commentary should:
 
-    **Common Strategies**
-
-    **Budget & Progression Options**
-
-    **Off-Meta Interactions**
-
-    **Meta Position**
-
-    **Deck Building**
-
-    **Meta Positioning**
-
-    **Combo Potential**
-
-    **Budget Considerations**
-
-    **Technical Play**
-
-    **Card Interactions**
-
-    **Legality & Historical Rulings**
+    *   **Start with a brief, accessible overview of what the card does.** Assume your friend might not fully grasp the card's function immediately.
+    *   **Share a little personal anecdote or observation about the card, showing your genuine connection to the game.** This could be a memory of playing the card, a thought about its art, or a comparison
+    to another card.
+    *   **Pick your Magic The Gathering favorite Commander of the moment, wrap it in double brackets like this: [[Card Name]], and explain how it would synergize with '{card_name}'**
+    *   **Recommend two hot cards that are similar to the card, but different in some way, and explain why.**
+    *   **Give your most meta card you think people should know about, and explain why.**
+    *   **Maintain a friendly, conversational tone, as if speaking directly to a friend.** Use phrases like "You know what I mean?" and "Honestly..." to create warmth and relatability.
+    *   **Aim for approximately 357-809 words.**
 
     CRITICAL: DO NOT INCLUDE any of the following in your response:
     - DO NOT include any section numbers
@@ -427,7 +412,8 @@ def analyze_single_card(temperature, topic, model, cards_collection, selected_ca
     # Return the card name, card ID, analysis ID, and word counts for further processing
     return card_name, card_id, analysis_id, word_counts
 
-def analyze_card_queue(temperature=1.0, topic="commander_deck", model="gemma3:latest", max_cards=None):
+
+def analyze_card_queue(temperature=0.919, topic="commander_deck", model="gemma3:1b", max_cards=None):
     """
     Analyze a queue of cards sequentially, starting with a random one
     and prioritizing based on mention count
@@ -588,12 +574,12 @@ def main():
     parser = argparse.ArgumentParser(description="MTG Random Card Analysis Tool")
 
     # Optional arguments with defaults
-    parser.add_argument("--temperature", type=float, default=1.0,
-                        help="Temperature setting for text generation (default: 1.0)")
+    parser.add_argument("--temperature", type=float, default=0.919,
+                        help="Temperature setting for text generation (default: 0.919)")
     parser.add_argument("--topic", type=str, default="commander_deck",
                         help="Analysis topic (default: commander_deck)")
-    parser.add_argument("--model", type=str, default="gemma3:latest",
-                        help="Ollama model to use (default: gemma3:latest)")
+    parser.add_argument("--model", type=str, default="gemma3:1b",
+                        help="Ollama model to use (default: gemma3:1b)")
     parser.add_argument("--chain-depth", type=int, default=2,
                         help="Number of related cards to analyze in the chain (default: 2)")
 
@@ -602,8 +588,7 @@ def main():
     # Analyze a chain of related cards
     # analyze_card_chain(args.temperature, args.topic, args.model, args.chain_depth)
 
-
-    analyze_card_queue(temperature=0.97, topic="commander_deck", model="gemma3:latest")
+    analyze_card_queue(temperature=0.919, topic="commander_deck", model="gemma3:1b")
 
     return 0
 
