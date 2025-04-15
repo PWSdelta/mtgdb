@@ -58,9 +58,9 @@ def next_prime(n):
 def calculate_chunk_size(total_rows):
     """
     Calculate chunk size based on the formula:
-    rows_in_table / 67, rounded up to the nearest prime number
+    rows_in_table / 421, rounded up to the nearest prime number
     """
-    initial_chunk_size = math.ceil(total_rows / 67)
+    initial_chunk_size = math.ceil(total_rows / 421)
     chunk_size = next_prime(initial_chunk_size)
     return chunk_size
 
@@ -160,9 +160,6 @@ def main():
             if len(chunk_df) < chunk_size:
                 # Last batch
                 break
-
-            # Small delay to avoid overwhelming the databases
-            time.sleep(0.5)
 
         print("Data transfer with images completed")
 

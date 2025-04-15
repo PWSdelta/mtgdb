@@ -98,6 +98,7 @@ elif os.getenv("APP_ENVIRONMENT", "").startswith("DEVVV"):
 else:
     engine = create_engine(os.environ.get('DATABASE_URL'))
 
+
 # Automatically map the database schema
 Base = automap_base()
 Base.prepare(engine, reflect=True, schema="public")
@@ -106,22 +107,8 @@ inspector = inspect(engine)
 
 # Access the automatically generated ORM class
 CardDetails = Base.classes.card_details
-# Decks = Base.classes.decks
-Products = Base.classes.products
-SpotPrices = Base.classes.spot_prices
-SetDetails = Base.classes.set_details
 
-Products.card_details = relationship(
-    "card_details",
-    primaryjoin="products.productId == foreign(card_details.tcgplayer_id)",
-    back_populates="product"
-)
 
-CardDetails.product = relationship(
-    "products",
-    primaryjoin="foreign(card_details.tcgplayer_id) == products.productId",
-    back_populates="card_details"
-)
 
 # Initialize the Google Cloud Storage client with explicit credentials
 # storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
@@ -619,52 +606,34 @@ def art_gallery():
 def card_detail(card_id, card_slug):
     import time
     from pymongo import MongoClient
-    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
     start_time = time.time()
+    print(f"Starting card detail request for id: {card_id}")
 
     try:
-        # Initialize MongoDB connection with a timeout
-        client = MongoClient('mongodb://localhost:27017/',
-                             serverSelectionTimeoutMS=5000)  # 5 second timeout
+        # Initialize MongoDB connection with explicit timeouts
+        client = MongoClient('mongodb://localhost:27017/')
 
-        # Test the connection
-        client.admin.command('ismaster')
-
-        db = client['your_database_name']
+        # Log database selection time
+        db_start = time.time()
+        db = client['mtgdbmongo']
         cards_collection = db['cards']
 
-        # Log what we're querying for
-        print(f"Searching for card with id: {card_id}")
+        card = cards_collection.find_one({"id": card_id})
 
-        # Execute the query with a timeout
-        card = cards_collection.find_one({"id": card_id}, max_time_ms=5000)
-
-        query_time = time.time() - start_time
-        print(f"Query executed in {query_time:.2f} seconds")
-
-        if not card:
-            print(f"No card found with id: {card_id}")
-            return render_template('404.html'), 500
+        if card is None:
+            return "Card not found", 404
 
         return render_template('card_detail.html', card=card)
 
-    except ConnectionFailure as e:
-        print(f"MongoDB Connection Error: {e}")
-        return f"Database connection error: {e}", 500
-
-    except ServerSelectionTimeoutError as e:
-        print(f"MongoDB Server Selection Timeout: {e}")
-        return f"Cannot connect to MongoDB server: {e}", 500
-
     except Exception as e:
-        print(f"Unexpected error: {e}")
         return f"An error occurred: {e}", 500
 
     finally:
+        total_time = time.time() - start_time
         if 'client' in locals():
             client.close()
-            print("MongoDB connection closed")
+            print(f"MongoDB connection closed. Total execution time: {total_time:.2f} seconds")
 
 
 @app.route('/random-card-view')
@@ -861,8 +830,7 @@ def random_card_view():
 def index():
     try:
         # Initialize MongoDB connection with a timeout
-        client = MongoClient('mongodb://localhost:27017/',
-                             serverSelectionTimeoutMS=5000)  # 5 second timeout
+        client = MongoClient('mongodb://localhost:27017/')
         db = client['mtgdbmongo']
         cards_collection = db['cards']
 
@@ -1307,6 +1275,26 @@ Crawl-delay: 10
 #
 
 
+@app.route('/asdf')
+def asdf():
+    client = MongoClient('mongodb://localhost:27017/')
+    db = client['mtgdbmongo']
+    cards_collection = db['cards']
+
+    # Check existing indexes
+    existing_indexes = list(cards_collection.list_indexes())
+    print(f"Existing indexes: {existing_indexes}")
+
+    # Create index on id field if not already present
+    index_names = [idx.get('name') for idx in existing_indexes]
+    if 'id_1' not in index_names:
+        print("Creating index on 'id' field...")
+        cards_collection.create_index("id", background=True)
+        print("Index created!")
+    else:
+        print("Index on 'id' field already exists")
+
+    client.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=2357)
