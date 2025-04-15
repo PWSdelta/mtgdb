@@ -35,7 +35,6 @@ def is_prime(n):
         i += 6
     return True
 
-
 def next_prime(n):
     """Find the nearest prime number greater than or equal to n."""
     if n <= 1:
@@ -56,16 +55,14 @@ def next_prime(n):
 
     return prime
 
-
 def calculate_chunk_size(total_rows):
     """
     Calculate chunk size based on the formula:
-    rows_in_table / 31, rounded up to the nearest prime number
+    rows_in_table / 67, rounded up to the nearest prime number
     """
-    initial_chunk_size = math.ceil(total_rows / 37)
+    initial_chunk_size = math.ceil(total_rows / 67)
     chunk_size = next_prime(initial_chunk_size)
     return chunk_size
-
 
 def load_image_if_exists(image_path):
     """Load image from filesystem if it exists and return as binary data"""
@@ -76,7 +73,6 @@ def load_image_if_exists(image_path):
         except Exception as e:
             print(f"Error reading image {image_path}: {e}")
     return None
-
 
 def process_card_images(card_dict):
     """Process and add image data to card dictionary"""
@@ -95,7 +91,6 @@ def process_card_images(card_dict):
             card_dict['art_crop_image_data'] = image_data
 
     return card_dict
-
 
 def transfer_data_chunk(chunk):
     try:
@@ -121,7 +116,6 @@ def transfer_data_chunk(chunk):
     finally:
         if 'client' in locals():
             client.close()
-
 
 def main():
     try:

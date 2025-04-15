@@ -6,6 +6,7 @@ import re
 import time
 from datetime import datetime
 
+import flask
 import numpy as np
 import requests
 from flask import Flask, url_for, redirect, jsonify
@@ -105,7 +106,10 @@ inspector = inspect(engine)
 
 # Access the automatically generated ORM class
 CardDetails = Base.classes.card_details
+# Decks = Base.classes.decks
 Products = Base.classes.products
+SpotPrices = Base.classes.spot_prices
+SetDetails = Base.classes.set_details
 
 Products.card_details = relationship(
     "card_details",
@@ -119,6 +123,10 @@ CardDetails.product = relationship(
     back_populates="card_details"
 )
 
+# Initialize the Google Cloud Storage client with explicit credentials
+# storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
+# bucket_name = 'mtgdb-stash-289370'
+#
 
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -131,11 +139,6 @@ def fetch_random_card_from_db():
     Fetches a random card entry from the database.
     """
     try:
-        # random_card = (session.query(CardDetails)
-        #                .order_by(func.random())
-        #                .first())
-
-        # Count all cards that meet the criteria.
         total_filtered = session.query(func.count(CardDetails.id)).filter(
             CardDetails.normal_price > 0,
             CardDetails.image_uris['normal'].isnot(None)
@@ -449,54 +452,6 @@ def generate_slug(text):
 
 
 
-@app.route('/sets/<set_code>')
-def set_details(set_code):
-    session = Session()
-    try:
-        # Using the correct field name 'set' instead of 'set_name'
-        print(f"Searching for cards with set = {set_code}")
-
-        # Query using the 'set' attribute
-        cards_in_set = session.query(CardDetails).filter(CardDetails.set == set_code).all()
-
-        print(f"Found {len(cards_in_set)} cards for set = {set_code}")
-
-        if not cards_in_set:
-            # Check what set values exist in the database
-            sample_sets = session.query(CardDetails.set).distinct().limit(10).all()
-            print(f"Sample set codes in database: {[s[0] for s in sample_sets]}")
-
-            # Check if there's a close match (in case of capitalization differences)
-            close_matches = session.query(CardDetails.set).filter(
-                CardDetails.set.ilike(f"%{set_code}%")
-            ).distinct().limit(5).all()
-
-            print(f"Possible close matches: {[s[0] for s in close_matches]}")
-
-            return f"Set '{set_code}' not found. Possible sets: {', '.join([s[0] for s in sample_sets])}", 404
-
-        # Pick a random card from the set
-        import random
-        card = random.choice(cards_in_set)
-
-        # Debug: Print which card we're processing
-        print(f"Selected card: {card.name if hasattr(card, 'name') else card.id}")
-
-        # Execute the full 3-method spot price update workflow.
-        # update_scryfall_prices(card)
-        # update_normal_price(card.id)
-        # record_daily_price(card)
-
-        return render_template('set.html', card=card, set_code=set_code, cards=cards_in_set)
-
-    except Exception as e:
-        import traceback
-        print(f"Error in set_details: {e}")
-        print(traceback.format_exc())
-        return f"An error occurred: {e}", 500
-    finally:
-        session.close()
-
 
 @app.route('/search')
 def search():
@@ -660,66 +615,286 @@ def art_gallery():
     )
 
 
-@app.route('/card/<card_id>', methods=['GET'])
-def card_legacy(card_id):
-    # Get card data
-    card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-
-    if card:
-        # Generate the slug
-        slug = generate_slug(card.name)
-        # Redirect to new URL format with 301 (permanent) redirect
-        return redirect(url_for('card_detail', card_id=card_id, card_slug=slug), code=301)
-    return render_template('404.html'), 404
-
-
 @app.route('/card/<card_id>/<card_slug>')
 def card_detail(card_id, card_slug):
-    # Fetch the card details
-    card = (session.query(CardDetails)
-            .filter(CardDetails.id == card_id,
-                    CardDetails.tcgplayer_id.isnot(None)
-                    ).first())
-    if not card:
-        return "Card not found", 404
+    import time
+    from pymongo import MongoClient
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
-    # update_scryfall_prices(card)
-    # update_normal_price(card.id)
-    # record_daily_price(card)
+    start_time = time.time()
 
-    cards_by_artist = get_cards_by_artist(card, card_id)
-    other_printings = get_other_printings(card, card_id)
+    try:
+        # Initialize MongoDB connection with a timeout
+        client = MongoClient('mongodb://localhost:27017/',
+                             serverSelectionTimeoutMS=5000)  # 5 second timeout
 
-    # Render the template with the data
-    return render_template(
-        'card.html',
-        card=card,
-        cards_by_artist=cards_by_artist,
-        other_printings=other_printings
-    )
+        # Test the connection
+        client.admin.command('ismaster')
 
+        db = client['your_database_name']
+        cards_collection = db['cards']
+
+        # Log what we're querying for
+        print(f"Searching for card with id: {card_id}")
+
+        # Execute the query with a timeout
+        card = cards_collection.find_one({"id": card_id}, max_time_ms=5000)
+
+        query_time = time.time() - start_time
+        print(f"Query executed in {query_time:.2f} seconds")
+
+        if not card:
+            print(f"No card found with id: {card_id}")
+            return render_template('404.html'), 500
+
+        return render_template('card_detail.html', card=card)
+
+    except ConnectionFailure as e:
+        print(f"MongoDB Connection Error: {e}")
+        return f"Database connection error: {e}", 500
+
+    except ServerSelectionTimeoutError as e:
+        print(f"MongoDB Server Selection Timeout: {e}")
+        return f"Cannot connect to MongoDB server: {e}", 500
+
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return f"An error occurred: {e}", 500
+
+    finally:
+        if 'client' in locals():
+            client.close()
+            print("MongoDB connection closed")
+
+
+@app.route('/random-card-view')
+def random_card_view():
+    try:
+        # Initialize MongoDB connection
+        client = MongoClient('mongodb://localhost:27017/')
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
+
+        # Use MongoDB's $sample aggregation to get a random document
+        random_card = list(cards_collection.aggregate([
+            {"$sample": {"size": 1}}
+        ]))
+
+        if not random_card:
+            return "No cards found in the database", 404
+
+        card = random_card[0]
+
+        # Known image field names (modify these based on your actual data structure)
+        image_fields = [
+            'image_uris', 'image', 'card_faces', 'artwork', 'image_front', 'image_back',
+            'small_image', 'normal_image', 'large_image', 'png', 'art_crop', 'border_crop'
+        ]
+
+        # Create HTML for the card
+        html = ['<!DOCTYPE html>',
+                '<html>',
+                '<head>',
+                '<title>MTG Card: {}</title>'.format(card.get('name', 'Random Card')),
+                '<meta charset="UTF-8">',
+                '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                '<style>',
+                '  body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }',
+                '  .card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; max-width: 800px; margin: 0 auto; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }',
+                '  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }',
+                '  .card-name { margin: 0; color: #444; flex: 1; }',
+                '  .card-meta { text-align: right; flex: 1; }',
+                '  .card-gallery { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin: 20px 0; }',
+                '  .card-image { text-align: center; flex: 0 0 auto; }',
+                '  .card-image img { max-width: 300px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }',
+                '  .card-image figcaption { margin-top: 8px; color: #666; }',
+                '  .card-details { margin-top: 30px; }',
+                '  .card-prop { margin: 12px 0; line-height: 1.5; }',
+                '  .prop-name { font-weight: bold; display: inline-block; width: 130px; color: #555; }',
+                '  .oracle-text { background: #f5f5f5; padding: 15px; border-radius: 8px; white-space: pre-line; }',
+                '  .json-toggle { background: #eee; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; margin: 20px 0; }',
+                '  .json-data { display: none; background: #f5f5f5; padding: 15px; border-radius: 8px; overflow: auto; }',
+                '  .visible { display: block; }',
+                '  .button { display: inline-block; background: #6a90b0; color: white; padding: 10px 20px; border-radius: 4px; text-decoration: none; margin-top: 20px; }',
+                '  .button:hover { background: #507799; }',
+                '</style>',
+                '</head>',
+                '<body>',
+                '<div class="card">']
+
+        # Card header with name and basic info
+        html.append('<div class="card-header">')
+        html.append(f'<h1 class="card-name">{card.get("name", "Unknown Card")}</h1>')
+        html.append('<div class="card-meta">')
+        if 'mana_cost' in card:
+            html.append(f'<div><span class="prop-name">Mana:</span> {card["mana_cost"]}</div>')
+        if 'type_line' in card:
+            html.append(f'<div><span class="prop-name">Type:</span> {card["type_line"]}</div>')
+        html.append('</div>')  # Close card-meta
+        html.append('</div>')  # Close card-header
+
+        # Add image gallery section
+        html.append('<div class="card-gallery">')
+
+        # Handle binary image data
+        import base64
+
+        # Process known image fields
+        images_added = False
+        for key, value in card.items():
+            # Check if this is a known image field or contains binary data
+            is_image_field = any(img_name in key.lower() for img_name in image_fields)
+            is_binary = isinstance(value, bytes)
+
+            if is_binary or is_image_field:
+                images_added = True
+
+                if is_binary:
+                    # Direct binary data
+                    mime_type = 'image/jpeg'  # Default assumption
+                    if 'png' in key.lower():
+                        mime_type = 'image/png'
+
+                    base64_image = base64.b64encode(value).decode('utf-8')
+                    img_src = f"data:{mime_type};base64,{base64_image}"
+
+                    html.append('<figure class="card-image">')
+                    html.append(f'<img src="{img_src}" alt="{key}" />')
+                    html.append(f'<figcaption>{key.replace("_", " ").title()}</figcaption>')
+                    html.append('</figure>')
+                elif isinstance(value, dict) and any(isinstance(value.get(subkey), bytes) for subkey in value):
+                    # Dictionary with binary fields
+                    for subkey, subvalue in value.items():
+                        if isinstance(subvalue, bytes):
+                            mime_type = 'image/jpeg'
+                            if 'png' in subkey.lower():
+                                mime_type = 'image/png'
+
+                            base64_image = base64.b64encode(subvalue).decode('utf-8')
+                            img_src = f"data:{mime_type};base64,{base64_image}"
+
+                            html.append('<figure class="card-image">')
+                            html.append(f'<img src="{img_src}" alt="{key}/{subkey}" />')
+                            html.append(f'<figcaption>{key}/{subkey}</figcaption>')
+                            html.append('</figure>')
+
+        if not images_added:
+            html.append('<p>No images found for this card.</p>')
+
+        html.append('</div>')  # Close card-gallery
+
+        # Card details section
+        html.append('<div class="card-details">')
+        html.append('<h2>Card Details</h2>')
+
+        # Show oracle text in a special format if available
+        if 'oracle_text' in card:
+            html.append('<div class="card-prop oracle-text">')
+            html.append(f'{card["oracle_text"]}')
+            html.append('</div>')
+
+        # Important card properties
+        important_props = ['rarity', 'set_name', 'flavor_text', 'power', 'toughness',
+                           'colors', 'keywords', 'legalities', 'collector_number', 'artist']
+
+        for prop in important_props:
+            if prop in card:
+                value = card[prop]
+                if isinstance(value, list):
+                    value = ', '.join(str(x) for x in value)
+                elif isinstance(value, dict):
+                    # Format dictionary values nicely
+                    value = ', '.join(f"{k}: {v}" for k, v in value.items())
+                html.append(
+                    f'<div class="card-prop"><span class="prop-name">{prop.replace("_", " ").title()}:</span> {value}</div>')
+
+        # Add a button to show/hide raw JSON data
+        html.append('<button class="json-toggle" onclick="toggleJson()">Show/Hide Raw JSON Data</button>')
+
+        # Convert card to a JSON-serializable format
+        import json
+        from bson import ObjectId
+
+        class MongoJSONEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, ObjectId):
+                    return str(obj)
+                elif isinstance(obj, bytes):
+                    return "[binary data]"
+                return super().default(obj)
+
+        card_json = json.dumps(card, indent=2, cls=MongoJSONEncoder)
+
+        html.append(f'<pre id="jsonData" class="json-data">{card_json}</pre>')
+
+        # Add a button to get another random card
+        html.append('<div style="text-align: center; margin-top: 30px;">')
+        html.append('<a href="/random-card-view" class="button">Get Another Random Card</a>')
+        html.append('</div>')
+
+        html.append('</div>')  # Close card-details div
+        html.append('</div>')  # Close card div
+
+        # Add JavaScript for toggling JSON visibility
+        html.append('<script>')
+        html.append('function toggleJson() {')
+        html.append('  var jsonElement = document.getElementById("jsonData");')
+        html.append('  jsonElement.classList.toggle("visible");')
+        html.append('}')
+        html.append('</script>')
+
+        html.append('</body></html>')
+
+        return '\n'.join(html)
+
+    except Exception as e:
+        import traceback
+        print(f"Error retrieving random card: {e}")
+        print(traceback.format_exc())
+        return f"Error: {str(e)}", 500
+
+    finally:
+        if 'client' in locals():
+            client.close()
 
 @app.route('/')
 def index():
-    session = Session()
-
     try:
-        # Try to get the cached hero card ID
-        hero_card_id = cache.get('hero_card_id')
-        hero_card = None
+        # Initialize MongoDB connection with a timeout
+        client = MongoClient('mongodb://localhost:27017/',
+                             serverSelectionTimeoutMS=5000)  # 5 second timeout
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
 
-        if hero_card_id is not None:
-            # Get the full hero card by ID
-            hero_card = session.query(CardDetails).get(hero_card_id)
+        #========================================================================================
 
-        if hero_card is None:
-            # If not in cache or not found, get a random card
-            hero_card = fetch_random_card_from_db()
-            if hero_card:
-                # Cache just the ID for 10 minutes
-                cache.set('hero_card_id', hero_card.id, timeout=3600)
+        hero_card = fetch_random_card_from_db()
 
-        random_cards = get_randomized_top_cards(session) or []
+        random_cards = list(collection.find(
+            {"tcgplayer_id": {"$ne": None}},
+
+            {
+                "_id": 1,  # Assuming this is your id field, could be different in MongoDB
+                "id": 1,  # If you have a separate id field
+                "name": 1,
+                "artist": 1,
+                "oracle_text": 1,
+                "printed_text": 1,
+                "flavor_text": 1,
+                "set_name": 1,
+                "tcgplayer_id": 1,
+                "normal_price": 1,
+                "image_uris.normal": 1  # Access nested field
+            }
+        ).limit(67))
+
+        # If you need to transform the data to match your expected format
+        # For example, to flatten the image_uris.normal field
+        for card in random_cards:
+            if 'image_uris' in card and 'normal' in card['image_uris']:
+                card['normal_image'] = card['image_uris']['normal']
+            else:
+                card['normal_image'] = None  # Default value if not found
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
@@ -730,132 +905,6 @@ def index():
         return f"An error occurred: {e}", 500
     finally:
         session.close()
-
-
-
-
-
-def get_randomized_top_cards(session):
-    """
-    Get 300 randomized cards from the top 3000 highest-priced cards.
-    With improved debugging and flexible criteria.
-    """
-    # First, let's check how many cards meet our criteria at all
-    count = session.query(CardDetails).filter(
-        CardDetails.image_uris["normal"].isnot(None),
-        CardDetails.tcgplayer_id.isnot(None),
-        CardDetails.normal_price.isnot(None),
-        CardDetails.normal_price > 0
-    ).count()
-
-    print(f"DEBUG: Found {count} cards with normal_price > 0 and not null")
-
-    # If we have very few, we should adjust our strategy
-    if count < 100:
-        print("WARNING: Very few cards meet price criteria, relaxing constraints")
-        # Try without the price filter if we have too few cards
-        top_cards = session.query(
-            CardDetails.id,
-            CardDetails.name,
-            CardDetails.artist,
-            CardDetails.oracle_text,
-            CardDetails.printed_text,
-            CardDetails.flavor_text,
-            CardDetails.set_name,
-            CardDetails.tcgplayer_id,
-            CardDetails.normal_price,
-            CardDetails.image_uris["normal"].label("normal_image")
-        ).filter(
-            CardDetails.image_uris["normal"].isnot(None)
-        ).order_by(
-            desc(CardDetails.normal_price)
-        ).limit(300).all()
-    else:
-        # Original query with normal price criteria
-        top_cards = session.query(
-            CardDetails.id,
-            CardDetails.name,
-            CardDetails.artist,
-            CardDetails.oracle_text,
-            CardDetails.printed_text,
-            CardDetails.flavor_text,
-            CardDetails.set_name,
-            CardDetails.tcgplayer_id,
-            CardDetails.normal_price,
-            CardDetails.image_uris["normal"].label("normal_image")
-        ).filter(
-            CardDetails.normal_price > 0,
-            CardDetails.normal_price.isnot(None),
-            CardDetails.image_uris["normal"].isnot(None)
-        ).order_by(
-            desc(CardDetails.normal_price)
-        ).limit(3000).all()
-
-    print(f"DEBUG: Query returned {len(top_cards)} cards")
-
-    # Check if we got any results
-    if not top_cards:
-        print("ERROR: No cards matched the query criteria in get_randomized_top_cards")
-        return []
-
-    # Step 2: Randomize the results
-    random.shuffle(top_cards)
-
-    # Step 3: Take the first 300 (or fewer if we have less than 300)
-    limit = min(300, len(top_cards))
-    random_selection = top_cards[:limit]
-
-    print(f"DEBUG: Returning {len(random_selection)} randomized cards")
-
-    # Cache the IDs for future use
-    if random_selection:
-        random_card_ids = [card.id for card in random_selection]
-        cache.set('random_card_ids', random_card_ids, timeout=600)  # 10 minutes
-
-    return random_selection
-
-
-@app.route('/random-expensive')
-def random_expensive_cards():
-    session = Session()
-    try:
-        # Try to get the cached random card IDs
-        random_card_ids = cache.get('random_card_ids')
-
-        if random_card_ids is not None:
-            # If we have cached IDs, retrieve those specific cards
-            random_cards = session.query(
-                CardDetails.id,
-                CardDetails.name,
-                CardDetails.artist,
-                CardDetails.oracle_text,
-                CardDetails.printed_text,
-                CardDetails.flavor_text,
-                CardDetails.set_name,
-                CardDetails.tcgplayer_id,
-                CardDetails.normal_price,
-                CardDetails.image_uris["normal"].label("normal_image")
-            ).filter(
-                CardDetails.id.in_(random_card_ids)
-            ).all()
-
-            # Sort them to match the original random order
-            id_to_position = {id: i for i, id in enumerate(random_card_ids)}
-            random_cards.sort(key=lambda card: id_to_position.get(card.id, 0))
-        else:
-            # If not in cache, generate new random selection
-            random_cards = get_randomized_top_cards()
-
-        return render_template('random_cards.html', cards=random_cards)
-
-    except Exception as e:
-        import traceback
-        print(f"Error in random_expensive_cards: {e}")
-        print(traceback.format_exc())
-        return f"An error occurred: {e}", 500
-    finally:
-        session.close()
-
 
 @app.route('/generate_sitemaps')
 def generate_sitemaps():
@@ -1256,327 +1305,6 @@ Crawl-delay: 10
 #         <p><a href="/">Return to Home</a></p>
 #         """, 500
 #
-
-
-def fetch_and_store_rulings(card_id, index=None, total=None):
-    """
-    Fetch rulings for a specific card from Scryfall and store them in the card_details table
-    """
-    start_time = time.time()
-    progress_info = f"[{index}/{total}]" if index is not None and total is not None else ""
-
-    # Create a new session for this operation
-    session = Session()
-
-    try:
-        # Get the card from database
-        card = session.query(CardDetails).get(card_id)
-
-        if not card:
-            app.logger.warning(f"{progress_info} Card not found with ID {card_id}")
-            return {"count": 0, "status": "not_found", "time": time.time() - start_time}
-
-        if not card.rulings_uri:
-            app.logger.info(f"{progress_info} No rulings URI for card: {card.name} ({card_id})")
-            return {"count": 0, "status": "no_uri", "time": time.time() - start_time}
-
-        # Fetch rulings from Scryfall
-        app.logger.info(f"{progress_info} Fetching rulings for card: {card.name} ({card_id})")
-
-        try:
-            response = requests.get(card.rulings_uri, timeout=10)
-
-            if response.status_code != 200:
-                app.logger.error(
-                    f"{progress_info} Failed to fetch rulings for {card.name} ({card_id}): Status {response.status_code}")
-                return {"count": 0, "status": "api_error", "time": time.time() - start_time}
-
-            # Process the rulings
-            rulings_data = response.json().get('data', [])
-
-            if not rulings_data:
-                app.logger.info(f"{progress_info} No rulings found for {card.name} ({card_id})")
-                # For empty rulings, assign an empty list directly (proper JSONB empty array)
-                card.rulings = []
-                session.commit()
-                return {"count": 0, "status": "no_rulings", "time": time.time() - start_time}
-
-            # With JSONB column, assign the Python object directly (no JSON serialization needed)
-            card.rulings = rulings_data
-            session.commit()
-
-            elapsed_time = time.time() - start_time
-            app.logger.info(
-                f"{progress_info} Stored {len(rulings_data)} rulings for {card.name} ({card_id}) in {elapsed_time:.2f}s")
-            return {"count": len(rulings_data), "status": "success", "time": elapsed_time}
-
-        except requests.exceptions.Timeout:
-            app.logger.error(f"{progress_info} Timeout fetching rulings for {card.name} ({card_id})")
-            return {"count": 0, "status": "timeout", "time": time.time() - start_time}
-        except Exception as e:
-            app.logger.error(f"{progress_info} Error fetching rulings for {card.name} ({card_id}): {str(e)}")
-            return {"count": 0, "status": "error", "error": str(e), "time": time.time() - start_time}
-    finally:
-        # Always close the session
-        session.close()
-
-
-def update_card_rulings_batch(batch_size=1000, offset=0):
-    """
-    Update rulings for a batch of cards in the database
-
-    Args:
-        batch_size: Number of cards to process in this batch
-        offset: Starting offset for pagination
-
-    Returns:
-        dict: Statistics about the update process
-    """
-    session = Session()
-    stats = {
-        "total_cards": 0,
-        "processed_cards": 0,
-        "rulings_found": 0,
-        "success_count": 0,
-        "error_count": 0,
-        "not_found_count": 0,
-        "no_uri_count": 0,
-        "no_rulings_count": 0,
-        "api_error_count": 0,
-        "timeout_count": 0,
-        "start_time": datetime.now().isoformat(),
-        "end_time": None,
-        "total_time": 0,
-        "recent_cards": [],
-        "failed_cards": [],
-        "batch_size": batch_size,
-        "offset": offset
-    }
-
-    try:
-        # Get total count of cards needing rulings update
-        from sqlalchemy import text
-
-        total_count = session.query(func.count(CardDetails.id)) \
-            .filter(CardDetails.rulings_uri.isnot(None)) \
-            .filter(or_(
-            CardDetails.rulings.is_(None),
-            text("rulings::text = '[]'"),
-            text("rulings::text = '{}'")
-        )).scalar()
-
-        # Get the batch of cards
-        cards = session.query(CardDetails) \
-            .filter(CardDetails.rulings_uri.isnot(None)) \
-            .filter(or_(
-            CardDetails.rulings.is_(None),
-            text("rulings::text = '[]'"),
-            text("rulings::text = '{}'")
-        )) \
-            .order_by(CardDetails.name) \
-            .limit(batch_size) \
-            .offset(offset) \
-            .all()
-
-        # Update stats with card counts
-        stats["total_cards"] = total_count
-        stats["total_remaining"] = total_count - offset
-        stats["cards_in_batch"] = len(cards)
-
-        if not cards:
-            app.logger.info(f"No cards found for batch update at offset {offset}")
-            stats["end_time"] = datetime.now().isoformat()
-            stats["total_time"] = 0
-            return stats
-
-        app.logger.info(f"Found {len(cards)} cards to update (total: {total_count})")
-
-        # Process each card
-        start_time = time.time()
-        for i, card in enumerate(cards):
-            card_id = card.id
-            card_index = offset + i + 1
-
-            # Skip cards without rulings URI
-            if not card.rulings_uri:
-                stats["no_uri_count"] += 1
-                continue
-
-            # Update the rulings
-            result = fetch_and_store_rulings(card_id, card_index, total_count)
-            stats["processed_cards"] += 1
-
-            # Update stats based on result
-            if result["status"] == "success":
-                stats["success_count"] += 1
-                stats["rulings_found"] += result["count"]
-                stats["recent_cards"].append({
-                    "id": card_id,
-                    "name": card.name,
-                    "rulings_count": result["count"],
-                    "time": result["time"]
-                })
-            elif result["status"] == "not_found":
-                stats["not_found_count"] += 1
-            elif result["status"] == "no_uri":
-                stats["no_uri_count"] += 1
-            elif result["status"] == "no_rulings":
-                stats["no_rulings_count"] += 1
-            elif result["status"] == "api_error":
-                stats["api_error_count"] += 1
-                stats["failed_cards"].append({
-                    "id": card_id,
-                    "name": card.name,
-                    "error": "API Error"
-                })
-            elif result["status"] == "timeout":
-                stats["timeout_count"] += 1
-                stats["failed_cards"].append({
-                    "id": card_id,
-                    "name": card.name,
-                    "error": "Timeout"
-                })
-            else:
-                stats["error_count"] += 1
-                stats["failed_cards"].append({
-                    "id": card_id,
-                    "name": card.name,
-                    "error": result.get("error", "Unknown error")
-                })
-
-            # Sleep briefly to avoid overloading the API
-            time.sleep(0.13)
-
-        # Calculate total time
-        end_time = time.time()
-        elapsed = end_time - start_time
-
-        stats["end_time"] = datetime.now().isoformat()
-        stats["total_time"] = elapsed
-
-        return stats
-
-    except Exception as e:
-        app.logger.exception(f"Error in update_card_rulings_batch: {str(e)}")
-        stats["error"] = str(e)
-        stats["end_time"] = datetime.now().isoformat()
-        return stats
-
-    finally:
-        session.close()
-
-
-
-# Make sure this is defined at the module level, not inside another function or try block
-@app.route('/api/update-rulings', methods=['GET'])
-def update_rulings_endpoint():
-    """API endpoint to update card rulings from Scryfall with pagination and filtering"""
-    # Optional: Require an API key for security
-    api_key = request.args.get('api_key')
-    if app.config.get('API_KEY') and api_key != app.config.get('API_KEY'):
-        return jsonify({"success": False, "message": "Unauthorized access"}), 401
-
-    card_id = request.args.get('card_id')
-
-    if card_id:
-        # Process a single card by ID
-        try:
-            app.logger.info(f"Starting update for single card: {card_id}")
-            result = fetch_and_store_rulings(card_id)
-            return jsonify({
-                "success": True,
-                "message": f"Stored {result['count']} rulings for card ID: {card_id} in {result['time']:.2f}s",
-                "details": result
-            })
-        except Exception as e:
-            app.logger.exception(f"Error in update-rulings endpoint for card {card_id}: {str(e)}")
-            return jsonify({
-                "success": False,
-                "message": f"Error updating rulings for card {card_id}: {str(e)}"
-            }), 500
-    else:
-        # Process a batch of cards
-        try:
-            # Get batch parameters
-            batch_size = request.args.get('batch_size', 999999, type=int)
-            offset = request.args.get('offset', 0, type=int)
-
-            # Limit batch size to reasonable values
-            if batch_size > 999999:
-                batch_size = 999999
-
-            app.logger.info(f"Starting batch update with size={batch_size}, offset={offset}")
-            result = update_card_rulings_batch(batch_size, offset)
-
-            # Calculate next offset
-            next_offset = offset + batch_size
-            has_more = result.get("total_remaining", 0) > batch_size
-
-            # Create a summary message
-            summary = (
-                f"Updated rulings for {result['processed_cards']} of {result['total_cards']} cards in "
-                f"{result['total_time']:.1f} seconds. Found {result['rulings_found']} total rulings. "
-                f"Success: {result['success_count']}, Errors: {result['error_count']}"
-            )
-
-            if has_more:
-                summary += f" | {result['total_remaining'] - batch_size} cards remaining."
-
-            app.logger.info(f"Batch update complete: {summary}")
-
-            return jsonify({
-                "success": True,
-                "message": summary,
-                "next_offset": next_offset if has_more else None,
-                "has_more": has_more,
-                "total_remaining": max(0, result.get("total_remaining", 0) - batch_size),
-                "details": result
-            })
-        except Exception as e:
-            app.logger.exception(f"Error in batch update-rulings endpoint: {str(e)}")
-            return jsonify({
-                "success": False,
-                "message": f"Error updating rulings: {str(e)}"
-            }), 500
-
-
-#
-# @app.route('/asdf', methods=['GET'])
-# def asdf():
-#     try:
-#         # Initialize the Google Cloud Storage client with explicit credentials
-#         storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
-#         bucket_name = 'mtgdb-stash-289370'
-#
-#         # Get bucket
-#         bucket = storage_client.bucket(bucket_name)
-#
-#         # List blobs (files) in the bucket, limited to 10
-#         blobs = list(bucket.list_blobs(max_results=10))
-#
-#         # Create a list of object details
-#         objects = []
-#         for blob in blobs:
-#             objects.append({
-#                 'name': blob.name,
-#                 'size': blob.size,
-#                 'updated': blob.updated.isoformat() if blob.updated else None,
-#                 'content_type': blob.content_type
-#             })
-#
-#         return jsonify({
-#             'success': True,
-#             'objects': objects,
-#             'count': len(objects)
-#         })
-#
-#     except Exception as e:
-#         return jsonify({
-#             'success': False,
-#             'error': str(e)
-#         }), 500
-#
-
 
 
 
