@@ -67,9 +67,101 @@ def store_analysis_in_db(card_name, card_id, analysis, card):
         updated_doc = collection.find_one({"card_id": card["id"]})  # Again, dictionary access
         return updated_doc["_id"] if updated_doc else None
 
-def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gemma3:1b"):
+# def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gemma3:1b"):
+#     """
+#     Analyze cards sequentially in the order they appear in the database.
+#
+#     Parameters:
+#     - temperature: Temperature setting for text generation
+#     - topic: Analysis topic (e.g., "commander_deck")
+#     - model: LLM model to use
+#
+#     Returns:
+#     - bool: Success status
+#     """
+#     # Get all cards that haven't been analyzed yet
+#     unanalyzed_query = {"card_analysis_date": {"$exists": False}}
+#     all_cards_cursor = cards_collection.find(unanalyzed_query)
+#
+#     print(f"\n{'=' * 50}")
+#     print(f"STARTING SEQUENTIAL CARD ANALYSIS")
+#     print(f"{'=' * 50}")
+#
+#     try:
+#         for card_doc in all_cards_cursor:
+#             # Extract card details
+#             card_name = card_doc.get("name", "Unknown Card")
+#             card_id = card_doc.get("_id")
+#
+#             print(f"\n{'=' * 50}")
+#             print(f"Card: {card_name}")
+#             print(f"{'=' * 50}")
+#
+#             # Generate the analysis
+#             print(f"\nGenerating analysis for {card_name}...")
+#
+#             prompt = f"""
+#             Analyze the Magic: The Gathering card '{card_name}'.
+#
+#             Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
+#
+#             **Power Level and Overview**
+#
+#             **Common Strategies**
+#
+#             **Budget & Progression Options**
+#
+#             **Off-Meta Interactions**
+#
+#             **Meta Position**
+#
+#             **Deck Building**
+#
+#             **Combo Potential**
+#
+#             **Budget Considerations**
+#
+#             **Technical Play**
+#
+#             **Card Interactions**
+#
+#             **Legality & Historical Rulings**
+#
+#             **Five Cards Everyone Should Know**
+#
+#             CRITICAL: DO NOT INCLUDE any of the following in your response:
+#             - DO NOT include any section numbers
+#             - DO NOT include any dividing lines (---)
+#             - DO NOT include the phrase "Common Follow-up Categories:"
+#             - DO NOT include any ## headings
+#
+#             Just provide a continuous analysis with simple bolded section headers only.
+#
+#             """
+#
+#             analysis = generate_llm_response(prompt, temperature=temperature, model=model)
+#
+#             if not analysis:
+#                 print(f"Failed to analyze '{card_name}'. Continuing with next card.")
+#                 continue
+#
+#             print("\n=== Analysis Results ===")
+#             print(analysis)
+#
+#             # Store the analysis
+#             analysis_id = store_analysis_in_db(card_name, card_id, analysis, card_doc)
+#     except KeyboardInterrupt:
+#         print("\n\nProcess interrupted by user. Saving progress...")
+#     except Exception as e:
+#         print(f"\n\nError encountered: {str(e)}")
+#
+#     return True
+def process_cards_queue(temperature=0.919, topic="commander_deck", model="gemma3:1b"):
     """
-    Analyze cards sequentially in the order they appear in the database.
+    Process cards that need analysis by creating a queue and analyzing them sequentially.
+
+    This function identifies cards that don't have analyses by comparing the "id" field
+    in cards with the "card_id" field in card_analyses.
 
     Parameters:
     - temperature: Temperature setting for text generation
@@ -79,21 +171,47 @@ def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gem
     Returns:
     - bool: Success status
     """
-    # Get all cards that haven't been analyzed yet
-    unanalyzed_query = {"card_analysis_date": {"$exists": False}}
-    all_cards_cursor = cards_collection.find(unanalyzed_query)
+    # Get all the card IDs that already have analyses
+    analyses_collection = db["card_analyses"]
+    analyzed_card_ids = set(analyses_collection.distinct("card_id"))
+    print(f"Found {len(analyzed_card_ids)} cards with existing analyses")
+
+    # Debug - print a few examples
+    sample_analyzed = list(analyzed_card_ids)[:5] if analyzed_card_ids else []
+    print(f"Sample analyzed card IDs: {sample_analyzed}")
+
+    # Get all cards
+    all_cards = list(cards_collection.find({}))
+    all_card_ids = set(card.get("id") for card in all_cards if card.get("id"))
+    print(f"Found {len(all_card_ids)} total cards in the database")
+
+    # Debug - print a few examples
+    sample_cards = list(all_card_ids)[:5] if all_card_ids else []
+    print(f"Sample card IDs: {sample_cards}")
+
+    # Find which cards need analysis
+    card_ids_needing_analysis = all_card_ids - analyzed_card_ids
+    print(f"Found {len(card_ids_needing_analysis)} cards needing analysis")
+
+    # Convert back to list for processing
+    cards_to_process = [card for card in all_cards if card.get("id") in card_ids_needing_analysis]
+    print(f"Prepared {len(cards_to_process)} cards for processing")
 
     print(f"\n{'=' * 50}")
-    print(f"STARTING SEQUENTIAL CARD ANALYSIS")
+    print(f"STARTING CARD ANALYSIS QUEUE")
     print(f"{'=' * 50}")
 
+    # Process each card in sequence
+    cards_analyzed = 0
+
     try:
-        for card_doc in all_cards_cursor:
+        for card_doc in cards_to_process:
             # Extract card details
             card_name = card_doc.get("name", "Unknown Card")
             card_id = card_doc.get("_id")
 
             print(f"\n{'=' * 50}")
+            print(f"PROCESSING CARD #{cards_analyzed + 1} OF {len(cards_to_process)}")
             print(f"Card: {card_name}")
             print(f"{'=' * 50}")
 
@@ -101,7 +219,7 @@ def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gem
             print(f"\nGenerating analysis for {card_name}...")
 
             prompt = f"""
-            Analyze the Magic: The Gathering card '{card_name}'.
+            Analyze the Magic: The Gathering card '{card_name}' for {topic}.
 
             Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
 
@@ -126,7 +244,7 @@ def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gem
             **Card Interactions**
 
             **Legality & Historical Rulings**
-            
+
             **Five Cards Everyone Should Know**
 
             CRITICAL: DO NOT INCLUDE any of the following in your response:
@@ -136,7 +254,6 @@ def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gem
             - DO NOT include any ## headings
 
             Just provide a continuous analysis with simple bolded section headers only.
-
             """
 
             analysis = generate_llm_response(prompt, temperature=temperature, model=model)
@@ -150,16 +267,23 @@ def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gem
 
             # Store the analysis
             analysis_id = store_analysis_in_db(card_name, card_id, analysis, card_doc)
+
+            # Increment counter
+            cards_analyzed += 1
+
     except KeyboardInterrupt:
         print("\n\nProcess interrupted by user. Saving progress...")
     except Exception as e:
         print(f"\n\nError encountered: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
+    print(f"\nAnalysis complete. Processed {cards_analyzed} cards total.")
     return True
 
 
 def main():
-    analyze_cards_in_order(
+    process_cards_queue(
         temperature=0.919,
         topic="commander_format",
         model="gemma3:1b"
