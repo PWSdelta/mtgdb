@@ -20,6 +20,8 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import func
+from pymongo import MongoClient
+
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +42,18 @@ ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
 logger = logging.getLogger(__name__)
 
 CORS(app)
+
+
+
+# Connect to MongoDB running on localhost with default port 27017
+client = MongoClient('mongodb://localhost:27017/')
+
+# Access a database
+db = client['mtgdbmongo']  # Replace with your actual database name
+
+# Access a collection
+collection = db['cards']  # Replace with your actual collection name
+
 
 
 
@@ -91,10 +105,7 @@ inspector = inspect(engine)
 
 # Access the automatically generated ORM class
 CardDetails = Base.classes.card_details
-# Decks = Base.classes.decks
 Products = Base.classes.products
-SpotPrices = Base.classes.spot_prices
-SetDetails = Base.classes.set_details
 
 Products.card_details = relationship(
     "card_details",
@@ -108,106 +119,10 @@ CardDetails.product = relationship(
     back_populates="card_details"
 )
 
-# Initialize the Google Cloud Storage client with explicit credentials
-# storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
-# bucket_name = 'mtgdb-stash-289370'
-#
 
 Session = sessionmaker(bind=engine)
 session = Session()
 
-
-
-# Create a template filter that renders and caches card images
-@app.template_filter('cached_card_image')
-def cached_card_image(card, timeout=600):
-    # Create a nested function that will be memoized with the specific timeout
-    @cache.memoize(timeout=timeout)
-    def render_card(card_id):
-        # Get image_uris using safe attribute access
-        image_uris = safe_get_attr(card, 'image_uris', {})
-        normal_img = safe_get_attr(image_uris, 'normal', '')
-
-        # Get other attributes safely
-        card_id = safe_get_attr(card, 'id', '')
-        name = safe_get_attr(card, 'name', '')
-        set_name = safe_get_attr(card, 'set_name', '')
-        type_line = safe_get_attr(card, 'type_line', '')
-        artist = safe_get_attr(card, 'artist', '')
-
-        # Generate slug
-        slug = generate_slug(name)
-
-        html = f'''
-        <a href="/card/{card_id}/{slug}">
-          <img 
-            src="{normal_img}" 
-            alt="{name} - {set_name} Magic: The Gathering Card - {type_line} by {artist}" 
-            class="card-img-top"
-            loading="lazy" >
-        </a>
-        '''
-        return Markup(html)
-
-    # Call the inner function with just the ID for efficient caching
-    card_id = safe_get_attr(card, 'id', '')
-    return render_card(card_id)
-
-@cache.cached(timeout=600, key_prefix=lambda: f"cards_by_artist_{request.view_args['card_id']}")
-def get_cards_by_artist(card, card_id):
-    return session.query(
-        CardDetails.id,
-        CardDetails.name,
-        CardDetails.artist,
-        CardDetails.oracle_text,
-        CardDetails.printed_text,
-        CardDetails.flavor_text,
-        CardDetails.set_name,
-        CardDetails.tcgplayer_id,
-        CardDetails.normal_price,
-        CardDetails.image_uris["normal"].label("normal_image")
-    ).filter(
-        CardDetails.tcgplayer_id.isnot(None),
-        CardDetails.artist == card.artist,
-        CardDetails.id != card_id,
-        CardDetails.normal_price >= 0.01
-    ).limit(31).all()
-
-
-@cache.cached(timeout=600, key_prefix=lambda: f"other_printings_{request.view_args['card_id']}")
-def get_other_printings(card, card_id):
-    return session.query(
-        CardDetails.id,
-        CardDetails.name,
-        CardDetails.artist,
-        CardDetails.oracle_text,
-        CardDetails.printed_text,
-        CardDetails.flavor_text,
-        CardDetails.set_name,
-        CardDetails.tcgplayer_id,
-        CardDetails.normal_price,
-        CardDetails.image_uris["normal"].label("normal_image")
-    ).filter(
-        CardDetails.tcgplayer_id.isnot(None),
-        CardDetails.oracle_id == card.oracle_id,
-        CardDetails.id != card_id,
-        CardDetails.normal_price >= 0.01
-    ).limit(31).all()
-
-
-
-# Helper function to safely access attributes using dot notation
-def safe_get_attr(obj, attr, default=None):
-    try:
-        # Try attribute access first
-        if hasattr(obj, attr):
-            return getattr(obj, attr)
-        # Try dictionary access as fallback
-        elif isinstance(obj, dict) and attr in obj:
-            return obj[attr]
-        return default
-    except:
-        return default
 
 
 
@@ -787,6 +702,7 @@ def card_detail(card_id, card_slug):
 @app.route('/')
 def index():
     session = Session()
+
     try:
         # Try to get the cached hero card ID
         hero_card_id = cache.get('hero_card_id')
@@ -803,41 +719,7 @@ def index():
                 # Cache just the ID for 10 minutes
                 cache.set('hero_card_id', hero_card.id, timeout=3600)
 
-        # Now handle the random cards with proper cache implementation
-        random_card_ids = cache.get('random_card_ids')
-        random_cards = []
-
-        if random_card_ids is not None and random_card_ids:  # Make sure it's not None and not empty
-            # Retrieve cards using cached IDs
-            random_cards = session.query(
-                CardDetails.id,
-                CardDetails.name,
-                CardDetails.artist,
-                CardDetails.oracle_text,
-                CardDetails.printed_text,
-                CardDetails.flavor_text,
-                CardDetails.set_name,
-                CardDetails.tcgplayer_id,
-                CardDetails.normal_price,
-                CardDetails.image_uris["normal"].label("normal_image")
-            ).filter(
-                CardDetails.id.in_(random_card_ids),
-                CardDetails.tcgplayer_id.isnot(None)
-            ).limit(67).all() or []  # Use empty list if None
-
-            if random_cards:
-                # Sort them to match the original random order
-                id_to_position = {id: i for i, id in enumerate(random_card_ids)}
-                random_cards.sort(key=lambda card: id_to_position.get(card.id, 0))
-
-        # If we didn't get cards from cache, generate new ones
-        if not random_cards:
-            random_cards = get_randomized_top_cards(session) or []
-
-            # THIS IS THE MISSING PART - Cache the IDs of the newly generated random cards
-            if random_cards:
-                new_random_card_ids = [card.id for card in random_cards]
-                cache.set('random_card_ids', new_random_card_ids, timeout=3600)  # Cache for 1 hour
+        random_cards = get_randomized_top_cards(session) or []
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
@@ -1699,5 +1581,5 @@ def update_rulings_endpoint():
 
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True, port=2357)
 

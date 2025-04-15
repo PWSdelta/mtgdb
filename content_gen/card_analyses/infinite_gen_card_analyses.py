@@ -8,7 +8,7 @@ import collections
 import requests
 
 
-def generate_llm_response(prompt, temperature=.83, model="llama3:latest"):
+def generate_llm_response(prompt, temperature=0.919, model="llama3:latest"):
     """Generate a response using a local Ollama LLM"""
     try:
         response = requests.post(
@@ -19,7 +19,7 @@ def generate_llm_response(prompt, temperature=.83, model="llama3:latest"):
                 "temperature": temperature,
                 "stream": False
             },
-            timeout=451
+            timeout=51
         )
 
         if response.status_code == 200:
@@ -38,26 +38,37 @@ def store_analysis_in_db(card_name, card_id, topic, analysis, temperature, relat
     db = client["infinityplex_dev"]
     collection = db["card_analyses"]
 
-    # Create a document to insert with proper card_id reference
+    # Create a document to insert/update with proper card_id reference
     analysis_doc = {
         "card_name": card_name,
-        "card_id": card_id,  # Foreign key reference to the cards collection
         "topic": topic,
         "content": analysis,
         "temperature": temperature,
-        "created_at": datetime.datetime.now()
+        "created_at": datetime.datetime.now(),
+        "updated_at": datetime.datetime.now()  # Add an updated_at timestamp
     }
 
     # Add relation to previous card in chain if applicable
     if related_to:
         analysis_doc["related_to"] = related_to
 
-    # Insert the document
-    result = collection.insert_one(analysis_doc)
+    # Use update_one with upsert=True to update an existing record or create a new one
+    # We use card_id as the unique identifier to determine if the record exists
+    result = collection.update_one(
+        {"card_id": card_id},  # Filter by card_id
+        {"$set": analysis_doc},  # Update with the new document
+        upsert=True  # Create new document if no matching document exists
+    )
 
-    return result.inserted_id
+    # Return the _id - either of the updated document or the newly inserted one
+    if result.upserted_id:
+        return result.upserted_id
+    else:
+        # If we updated an existing document, find it to return its _id
+        updated_doc = collection.find_one({"card_id": card_id})
+        return updated_doc["_id"] if updated_doc else None
 
-def analyze_random_card(temperature=.83, topic="commander_deck", model="gemma3:1b"):
+def analyze_random_card(temperature=0.919, topic="commander_deck", model="gemma3:1b"):
     """Analyze a random Magic: The Gathering card from the database that hasn't been analyzed yet"""
     # Connect to MongoDB
     client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
@@ -144,7 +155,6 @@ def analyze_random_card(temperature=.83, topic="commander_deck", model="gemma3:1
 
     Just provide a continuous analysis with simple bolded section headers only.
 
-    In your response, wrap the names of real Magic: The Gathering cards with double brackets like this: [[Card Name]].
     """
 
     analysis = generate_llm_response(prompt, temperature=temperature, model=model)
@@ -166,15 +176,6 @@ def analyze_random_card(temperature=.83, topic="commander_deck", model="gemma3:1
     )
 
     print(f"\nCard updated with analysis timestamp: {current_time}")
-
-    # Analyze the bracket usage
-    pattern = r'\[\[(.*?)\]\]'
-    bracketed_terms = re.findall(pattern, analysis)
-    word_counts = collections.Counter(bracketed_terms)
-
-    print("\n=== Bracket Usage Statistics ===")
-    for word, count in word_counts.most_common():
-        print(f"[[{word}]]: {count}")
 
     print("\nComprehensive analysis completed and saved to database.")
     return True
@@ -223,8 +224,7 @@ def find_related_card(word_counts, original_card_name, cards_collection, analyze
     print("None of the mentioned cards found in database.")
     return None, None
 
-
-def analyze_card_chain(temperature=.83, topic="commander_deck", model="gemma3:1b", depth=2):
+def analyze_card_chain(temperature=0.919, topic="commander_deck", model="gemma3:1b", depth=2):
     """Analyze a chain of related cards, starting with a random one"""
     # Connect to MongoDB
     client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
@@ -390,8 +390,6 @@ def analyze_single_card(temperature, topic, model, cards_collection, selected_ca
     - DO NOT include any ## headings
 
     Just provide a continuous analysis with simple bolded section headers only.
-
-    In your response, wrap the names of real Magic: The Gathering cards with double brackets like this: [[Card Name]].
     """
 
     analysis = generate_llm_response(prompt, temperature=temperature, model=model)
@@ -417,34 +415,27 @@ def analyze_single_card(temperature, topic, model, cards_collection, selected_ca
 
     print(f"\nCard updated with analysis timestamp: {current_time}")
 
-    # Analyze the bracket usage
-    pattern = r'\[\[(.*?)\]\]'
-    bracketed_terms = re.findall(pattern, analysis)
-    word_counts = collections.Counter(bracketed_terms)
-
-    print("\n=== Bracket Usage Statistics ===")
-    for word, count in word_counts.most_common():
-        print(f"[[{word}]]: {count}")
-
     # Return the card name, card ID, analysis ID, and word counts for further processing
-    return card_name, card_id, analysis_id, word_counts
+    return card_name, card_id, analysis_id
 
-def analyze_card_queue(temperature=.83, topic="commander_deck", model="gemma3:1b", max_cards=None):
+def analyze_card_queue(temperature=0.919, topic="commander_deck", model="gemma3:1b", max_cards=None,
+                       continue_when_empty=True):
     """
     Analyze a queue of cards sequentially, starting with a random one
-    and prioritizing based on mention count
+    and prioritizing based on mention count. When queue is empty, select a random card.
 
     Parameters:
     - temperature: Temperature setting for text generation
     - topic: Analysis topic (e.g., "commander_deck")
     - model: LLM model to use
     - max_cards: Maximum number of cards to analyze (None for unlimited)
+    - continue_when_empty: If True, select a random card when queue becomes empty
 
     Returns:
     - bool: Success status
     """
     # Connect to MongoDB
-    client = pymongo.MongoClient("mongodb://localhost:27017/infinitplex_dev")
+    client = pymongo.MongoClient("mongodb://localhost:27017")
     db = client["infinityplex_dev"]
     cards_collection = db["cards"]
 
@@ -497,21 +488,54 @@ def analyze_card_queue(temperature=.83, topic="commander_deck", model="gemma3:1b
     cards_analyzed = 1  # Count the first card
 
     try:
-        while card_queue:
+        while True:  # Changed to infinite loop, will exit based on max_cards or KeyboardInterrupt
             # Check if we've reached the maximum (if specified)
             if max_cards and cards_analyzed >= max_cards:
                 print(f"\nReached maximum card limit ({max_cards}). Stopping.")
                 break
 
-            # Sort the queue by priority (highest first)
-            card_queue.sort(key=lambda x: x[2], reverse=True)
+            # Check if queue is empty and handle accordingly
+            if not card_queue:
+                if not continue_when_empty:
+                    print("\nQueue is empty. Stopping analysis.")
+                    break
 
-            # Get the highest priority card
-            next_card_name, relation, priority = card_queue.pop(0)
+                print(f"\n{'=' * 50}")
+                print("QUEUE IS EMPTY - SELECTING A RANDOM CARD TO CONTINUE")
+                print(f"{'=' * 50}")
+
+                # Get a random card that hasn't been processed yet
+                unprocessed_query = {"name": {"$nin": list(processed_cards)}}
+                unprocessed_count = cards_collection.count_documents(unprocessed_query)
+
+                if unprocessed_count > 0:
+                    # There are still unanalyzed cards
+                    random_skip = random.randint(0, unprocessed_count - 1)
+                    random_card = cards_collection.find(unprocessed_query).skip(random_skip).limit(1).next()
+                    next_card_name = random_card.get("name")
+                    relation = None  # No relation for a randomly selected card
+                    priority = 0  # Default priority
+                else:
+                    # All cards have been processed, pick any random card
+                    total_cards = cards_collection.count_documents({})
+                    random_skip = random.randint(0, total_cards - 1)
+                    random_card = cards_collection.find().skip(random_skip).limit(1).next()
+                    next_card_name = random_card.get("name")
+                    processed_cards.discard(next_card_name)  # Allow reprocessing
+                    relation = None
+                    priority = 0
+
+                print(f"Randomly selected card: {next_card_name}")
+            else:
+                # Sort the queue by priority (highest first)
+                card_queue.sort(key=lambda x: x[2], reverse=True)
+
+                # Get the highest priority card
+                next_card_name, relation, priority = card_queue.pop(0)
 
             print(f"\n{'=' * 50}")
-            print(f"PROCESSING QUEUED CARD #{cards_analyzed + 1}")
-            print(f"Card: {next_card_name} (Priority: {priority})")
+            print(f"PROCESSING {'QUEUED' if relation else 'RANDOM'} CARD #{cards_analyzed + 1}")
+            print(f"Card: {next_card_name}" + (f" (Priority: {priority})" if relation else ""))
             print(f"Queue size: {len(card_queue)} cards remaining")
             print(f"{'=' * 50}")
 
@@ -559,10 +583,13 @@ def analyze_card_queue(temperature=.83, topic="commander_deck", model="gemma3:1b
             # Periodically show the top items in the queue (every 5 cards or when requested)
             if cards_analyzed % 5 == 0 or new_additions > 0:
                 print("\nTop cards in queue:")
-                for i, (card_name, _, priority) in enumerate(card_queue[:5]):
-                    print(f"{i + 1}. {card_name} (priority: {priority})")
-                if len(card_queue) > 5:
-                    print(f"...and {len(card_queue) - 5} more")
+                if card_queue:
+                    for i, (card_name, _, priority) in enumerate(card_queue[:5]):
+                        print(f"{i + 1}. {card_name} (priority: {priority})")
+                    if len(card_queue) > 5:
+                        print(f"...and {len(card_queue) - 5} more")
+                else:
+                    print("Queue is currently empty - will select random card next")
 
             # Optional: Save progress periodically
             if cards_analyzed % 10 == 0:
@@ -585,9 +612,298 @@ def analyze_card_queue(temperature=.83, topic="commander_deck", model="gemma3:1b
     return True
 
 
+def analyze_cards_in_order(temperature=0.919, topic="commander_deck", model="gemma3:1b", max_cards=None):
+    """
+    Analyze cards sequentially in the order they appear in the database.
+
+    Parameters:
+    - temperature: Temperature setting for text generation
+    - topic: Analysis topic (e.g., "commander_deck")
+    - model: LLM model to use
+    - max_cards: Maximum number of cards to analyze (None for unlimited)
+
+    Returns:
+    - bool: Success status
+    """
+    # Connect to MongoDB
+    client = pymongo.MongoClient("mongodb://localhost:27017")
+    db = client["infinityplex_dev"]
+    cards_collection = db["cards"]
+
+    # Get all cards that haven't been analyzed yet
+    unanalyzed_query = {"card_analysis_date": {"$exists": False}}
+    all_cards_cursor = cards_collection.find(unanalyzed_query)
+
+    # Count how many cards will be processed
+    total_unanalyzed = cards_collection.count_documents(unanalyzed_query)
+
+    # Process each card in sequence
+    cards_analyzed = 0
+
+    print(f"\n{'=' * 50}")
+    print(f"STARTING SEQUENTIAL CARD ANALYSIS")
+    print(f"{'=' * 50}")
+
+    try:
+        for card_doc in all_cards_cursor:
+            # Extract card details
+            card_name = card_doc.get("name", "Unknown Card")
+            card_id = card_doc.get("_id")
+
+            print(f"\n{'=' * 50}")
+            print(f"PROCESSING CARD #{cards_analyzed + 1}" +
+                  (f" OF {max_cards}" if max_cards else f" OF {total_unanalyzed}"))
+            print(f"Card: {card_name}")
+            print(f"{'=' * 50}")
+
+            # Check if this card has been analyzed before
+            previously_analyzed = "card_analysis_date" in card_doc
+            if previously_analyzed:
+                last_analysis = card_doc.get("card_analysis_date")
+                print(f"Note: This card was previously analyzed on {last_analysis}")
+
+            # Generate the analysis
+            print(f"\nGenerating analysis for {card_name}...")
+
+            prompt = f"""
+            Analyze the Magic: The Gathering card '{card_name}' for {topic}.
+
+            Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
+
+            **Power Level and Overview**
+
+            **Common Strategies**
+
+            **Budget & Progression Options**
+
+            **Off-Meta Interactions**
+
+            **Meta Position**
+
+            **Deck Building**
+
+            **Combo Potential**
+
+            **Budget Considerations**
+
+            **Technical Play**
+
+            **Card Interactions**
+
+            **Legality & Historical Rulings**
+            
+            **Five Cards Everyone Should Know**
+
+            CRITICAL: DO NOT INCLUDE any of the following in your response:
+            - DO NOT include any section numbers
+            - DO NOT include any dividing lines (---)
+            - DO NOT include the phrase "Common Follow-up Categories:"
+            - DO NOT include any ## headings
+
+            Just provide a continuous analysis with simple bolded section headers only.
+
+            """
+
+            analysis = generate_llm_response(prompt, temperature=temperature, model=model)
+
+            if not analysis:
+                print(f"Failed to analyze '{card_name}'. Continuing with next card.")
+                continue
+
+            print("\n=== Analysis Results ===")
+            print(analysis)
+
+            # Store the analysis
+            analysis_id = store_analysis_in_db(card_name, card_id, topic, analysis, temperature)
+
+            # Update the card document with analysis timestamp
+            current_time = datetime.datetime.now()
+            cards_collection.update_one(
+                {"_id": card_id},
+                {"$set": {
+                    "card_analysis_date": current_time,
+                    "last_analysis_id": analysis_id
+                }}
+            )
+
+            cards_analyzed += 1
+
+            # Optional: Save progress periodically
+            if cards_analyzed % 10 == 0:
+                print(f"\nProgress checkpoint: {cards_analyzed} cards analyzed")
+
+    except KeyboardInterrupt:
+        print("\n\nProcess interrupted by user. Saving progress...")
+    except Exception as e:
+        print(f"\n\nError encountered: {str(e)}")
+        # Log the error for debugging
+
+    print(f"\nAnalysis complete. Processed {cards_analyzed} cards total.")
+    return True
+
+def find_cards_needing_analysis():
+    """
+    Identifies cards that need analysis by comparing the cards collection
+    with the card_analyses collection.
+
+    Returns:
+    - list: List of card IDs that need analysis
+    """
+    # Connect to MongoDB
+    client = pymongo.MongoClient("mongodb://localhost:27017")
+    db = client["infinityplex_dev"]
+    cards_collection = db["cards"]
+    analyses_collection = db["card_analyses"]
+
+    # Get all card IDs
+    all_card_ids = [card["_id"] for card in cards_collection.find({}, {"_id": 1})]
+
+    # Get all analyzed card IDs
+    analyzed_card_ids = [analysis["card_id"] for analysis in analyses_collection.find({}, {"card_id": 1})]
+
+    # Find cards that don't have analysis yet
+    cards_needing_analysis = [card_id for card_id in all_card_ids if card_id not in analyzed_card_ids]
+
+    print(f"Total cards: {len(all_card_ids)}")
+    print(f"Analyzed cards: {len(analyzed_card_ids)}")
+    print(f"Cards needing analysis: {len(cards_needing_analysis)}")
+
+    return cards_needing_analysis
+
+def process_cards_queue(temperature=0.919, topic="commander_deck", model="gemma3:1b", max_cards=None):
+    """
+    Process cards that need analysis by creating a queue and analyzing them sequentially.
+
+    Parameters:
+    - temperature: Temperature setting for text generation
+    - topic: Analysis topic (e.g., "commander_deck")
+    - model: LLM model to use
+    - max_cards: Maximum number of cards to analyze (None for unlimited)
+
+    Returns:
+    - bool: Success status
+    """
+    # Get card IDs that need analysis
+    cards_needing_analysis = find_cards_needing_analysis()
+
+    # Limit the number of cards if max_cards is specified
+    if max_cards and max_cards < len(cards_needing_analysis):
+        cards_to_process = cards_needing_analysis[:max_cards]
+        print(f"Processing {max_cards} cards out of {len(cards_needing_analysis)} cards needing analysis")
+    else:
+        cards_to_process = cards_needing_analysis
+        print(f"Processing all {len(cards_needing_analysis)} cards needing analysis")
+
+    # Connect to MongoDB
+    client = pymongo.MongoClient("mongodb://localhost:27017")
+    db = client["infinityplex_dev"]
+    cards_collection = db["cards"]
+
+    # Process each card in sequence
+    cards_analyzed = 0
+
+    print(f"\n{'=' * 50}")
+    print(f"STARTING CARD ANALYSIS QUEUE")
+    print(f"{'=' * 50}")
+
+    try:
+        for card_id in cards_to_process:
+            # Get the card document
+            card_doc = cards_collection.find_one({"_id": card_id})
+
+            if not card_doc:
+                print(f"Card with ID {card_id} not found. Skipping.")
+                continue
+
+            # Extract card details
+            card_name = card_doc.get("name", "Unknown Card")
+
+            print(f"\n{'=' * 50}")
+            print(f"PROCESSING CARD #{cards_analyzed + 1} OF {len(cards_to_process)}")
+            print(f"Card: {card_name}")
+            print(f"{'=' * 50}")
+
+            # Generate the analysis
+            print(f"\nGenerating analysis for {card_name}...")
+
+            prompt = f"""
+            Analyze the Magic: The Gathering card '{card_name}' for {topic}.
+
+            Include these sections with ONLY bolded headers and NO numbering. Please use full sentences and generate a healthy amount of content. Please also be sure to mention other cards wherever you can if it makes sense in context with the current card:
+
+            **Power Level and Overview**
+
+            **Common Strategies**
+
+            **Budget & Progression Options**
+
+            **Off-Meta Interactions**
+
+            **Meta Position**
+
+            **Deck Building**
+
+            **Combo Potential**
+
+            **Budget Considerations**
+
+            **Technical Play**
+
+            **Card Interactions**
+
+            **Legality & Historical Rulings**
+            
+            **Five Cards Everyone Should Know**
+
+            CRITICAL: DO NOT INCLUDE any of the following in your response:
+            - DO NOT include any section numbers
+            - DO NOT include any dividing lines (---)
+            - DO NOT include the phrase "Common Follow-up Categories:"
+            - DO NOT include any ## headings
+
+            Just provide a continuous analysis with simple bolded section headers only.
+            """
+
+            analysis = generate_llm_response(prompt, temperature=temperature, model=model)
+
+            if not analysis:
+                print(f"Failed to analyze '{card_name}'. Continuing with next card.")
+                continue
+
+            print("\n=== Analysis Results ===")
+            print(analysis)
+
+            # Store the analysis
+            analysis_id = store_analysis_in_db(card_name, card_id, topic, analysis, temperature)
+
+            # Update the card document with analysis timestamp
+            current_time = datetime.datetime.now()
+            cards_collection.update_one(
+                {"_id": card_id},
+                {"$set": {
+                    "card_analysis_date": current_time,
+                    "last_analysis_id": analysis_id
+                }}
+            )
+
+            cards_analyzed += 1
+
+            # Optional: Save progress periodically
+            if cards_analyzed % 10 == 0:
+                print(f"\nProgress checkpoint: {cards_analyzed} cards analyzed")
+
+    except KeyboardInterrupt:
+        print("\n\nProcess interrupted by user. Saving progress...")
+    except Exception as e:
+        print(f"\n\nError encountered: {str(e)}")
+        # Log the error for debugging
+
+    print(f"\nAnalysis complete. Processed {cards_analyzed} cards total.")
+    return True
+
 def main():
     # Parse command line arguments for options
-    parser = argparse.ArgumentParser(description="MTG Random Card Analysis Tool")
+    parser = argparse.ArgumentParser(description="MTG Card Analysis Tool")
 
     # Optional arguments with defaults
     parser.add_argument("--temperature", type=float, default=1.0,
@@ -596,19 +912,25 @@ def main():
                         help="Analysis topic (default: commander_deck)")
     parser.add_argument("--model", type=str, default="gemma3:1b",
                         help="Ollama model to use (default: gemma3:1b)")
+    parser.add_argument("--max-cards", type=int, default=None,
+                        help="Maximum number of cards to analyze (default: unlimited)")
+    parser.add_argument("--mode", type=str, choices=["queue", "chain", "sequential"], default="sequential",
+                        help="Analysis mode: queue (priority-based), chain (related cards), or sequential (in-order) (default: sequential)")
     parser.add_argument("--chain-depth", type=int, default=2,
                         help="Number of related cards to analyze in the chain (default: 2)")
+    parser.add_argument("--continue-when-empty", action="store_true", default=True,
+                        help="Continue with random cards when queue is empty (default: True)")
 
     args = parser.parse_args()
 
-    # Analyze a chain of related cards
-    # analyze_card_chain(args.temperature, args.topic, args.model, args.chain_depth)
-
-
-    analyze_card_queue(temperature=0.91, topic="commander_deck", model="gemma3:1b")
+    process_cards_queue(
+        temperature=0.919,
+        topic="commander_format",
+        model="gemma3:1b",
+        max_cards=500000
+    )
 
     return 0
-
 
 if __name__ == "__main__":
     import datetime  # Added for timestamp in database
