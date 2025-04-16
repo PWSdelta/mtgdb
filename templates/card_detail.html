@@ -92,140 +92,10 @@
 
     </style>
 
-    <!-- Wrap your image in this container -->
-
-
 <div class="container">
 
+
 <article class="card-details">
-<div class="row" style="margin-top: 5em;">
-    <div class="col">
-        <div class="card-image-container">
-            <img src="{{ card.image_uris.normal }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
-        </div>
-    </div>
-    <div class="col">
-        {% if card.rarity %}
-            {% set rarity = card.rarity or 'common' %}
-            {% if rarity == "common" %}
-                <span class="badge bg-info">{{ card.rarity }}</span>
-            {% elif rarity == "uncommon" %}
-                <span class="badge bg-secondary">{{ card.rarity }}</span>
-            {% elif rarity == "rare" %}
-                <span class="badge bg-warning">{{ card.rarity }}</span>
-            {% elif rarity == "mythic" %}
-                <span class="badge bg-danger">{{ card.rarity }}</span>
-            {% elif rarity == "land" %}
-                <span class="badge bg-success">{{ card.rarity }}</span>
-            {% else %}
-                <p>&nbsp;</p>
-            {% endif %}
-        {% endif %}
-
-{#        <h1>#}
-{#            {{ card.name }}#}
-{#        </h1>#}
-
-        <div class="card-name-container">
-          <h1 class="card-name{% if card.rarity == 'rare' %} card-name-rare{% elif card.rarity == 'mythic' %} card-name-mythic{% endif %}">
-            {{ card.name }}
-          </h1>
-        </div>
-
-
-        <p>
-          <strong>Artist:</strong>
-          <a href="/artists/{{ card.artist }}"
-             data-bs-toggle="popover"
-             data-bs-trigger="hover"
-             data-bs-placement="top"
-             data-bs-content="View all cards illustrated by {{ card.artist }}"
-             data-bs-title="Artist Info">
-            {{ card.artist }}
-          </a>
-        </p>
-
-        <p><strong>Set:</strong>{{ card.set_name }} </p>
-        <p><strong>Mana Cost:</strong> <span id="mana-cost-display">{{ card.mana_cost }}</span></p>
-
-
-        <p>
-            <span
-               data-bs-toggle="tooltip"
-               data-bs-placement="top"
-                data-bs-custom-class="custom-tooltip"
-                data-bs-title="Our proprietary formula to calculate a globally relevant price estimate.">
-
-                <strong>Delta Price *: </strong>
-
-                ${{ card.normal_price | round(2) if card.normal_price is not none and card.normal_price is float else '--' }}
-            </span>
-
-        <p><strong>Type:</strong> {{ card.type_line }}</p>
-        {% if card.printed_text %}
-            <p>{{ card.printed_text | safe }}</p>
-        {% elif card.text %}
-            <p>{{ card.text | safe }}</p>
-        {% elif card.oracle_text %}
-            <p>{{ card.oracle_text | safe }}</p>
-        {% endif %}
-        {% if card.flavor_text %}
-            <p><em>{{ card.flavor_text | safe }}</em></p>
-        {% endif %}
-
-
-        <!-- After card text and before accordion -->
-{#        <div class="tcgplayer-button-container my-4 text-center">#}
-{##}
-{##}
-{#              <a href="https://www.tcgplayer.com/search/magic/product?q={{ card.name|urlencode }}"#}
-{#                   target="_blank"#}
-{#                   class="btn btn-success btn-lg shadow-sm">#}
-{#                    <i class="bi bi-cart-plus me-2"></i>#}
-{#                    Find at TCGPlayer#}
-{#                </a>#}
-{#            <div class="text-muted small mt-2">#}
-{#                Support our site through our affiliate link#}
-{#            </div>#}
-{#        </div>#}
-
-
-
-        <div class="accordion my-5" id="richCardAccordion">
-            {% if card.rulings and card.rulings|length > 0 %}
-                {% include "_card_rulings.html" %}
-            {% endif %}
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                        Card Legalities
-                    </button>
-                </h2>
-                <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#richCardAccordion">
-                    <div class="accordion-body">
-                        {%  include "_legalities_info.html" %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    </div>
-</div>
-
 
 
 <div class="row" style="margin-top: 5em;">
@@ -392,28 +262,6 @@
     </div>
 </div>
 {% endif %}
-
-
-
-
-
-<div class="accordion my-5" id="dataDumpAccordion">
-
-  <div class="accordion-item">
-    <h2 class="accordion-header">
-      <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#gimmeData" aria-expanded="true" aria-controls="gimmeData">
-        (Warning) Data Overload
-      </button>
-    </h2>
-    <div id="gimmeData" class="accordion-collapse collapse" data-bs-parent="#dataDumpAccordion">
-      <div class="accordion-body">
-          {% include "_card_detail_dump_table.html" %}
-      </div>
-    </div>
-  </div>
-
-</div>
-
 
 
 <script>

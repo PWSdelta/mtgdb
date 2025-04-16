@@ -3,7 +3,7 @@
 
 {#      {{ card|cached_card_image }}#}
       <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">
-      <img src="{{ card.normal_image }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">
+      <img src="{{ card.image_uris.normal }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">
         </a>
 
     <div class="card-body">

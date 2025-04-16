@@ -606,35 +606,109 @@ def art_gallery():
 def card_detail(card_id, card_slug):
     import time
     from pymongo import MongoClient
+    from bson.objectid import ObjectId
+    import json
+    from bson import json_util
+    import traceback
 
     start_time = time.time()
     print(f"Starting card detail request for id: {card_id}")
 
     try:
-        # Initialize MongoDB connection with explicit timeouts
+        # Initialize MongoDB connection
         client = MongoClient('mongodb://localhost:27017/')
-
-        # Log database selection time
-        db_start = time.time()
         db = client['mtgdbmongo']
         cards_collection = db['cards']
 
+        # Try different approaches to find the card
         card = cards_collection.find_one({"id": card_id})
 
+        # If that fails, try with ObjectId
+        if card is None and len(card_id) == 24 and all(c in '0123456789abcdefABCDEF' for c in card_id):
+            try:
+                card = cards_collection.find_one({"_id": ObjectId(card_id)})
+            except:
+                pass
+
+        # If still not found, try by slug
         if card is None:
+            card = cards_collection.find_one({"slug": card_slug})
+
+        # If still not found, try other fields
+        if card is None:
+            potential_id_fields = ["oracle_id", "mtgo_id", "arena_id", "tcgplayer_id", "cardmarket_id"]
+            for field in potential_id_fields:
+                card = cards_collection.find_one({field: card_id})
+                if card:
+                    break
+
+        if card is None:
+            print(f"Card not found for id: {card_id} and slug: {card_slug}")
             return "Card not found", 404
 
-        return render_template('card_detail.html', card=card)
+        # Process the card data to ensure all required fields exist
+        card_dict = json.loads(json_util.dumps(card))
+
+        # Ensure all nested structures exist
+        if 'image_uris' not in card_dict:
+            card_dict['image_uris'] = {
+                'normal': '/static/img/card_back.png',
+                'large': '/static/img/card_back.png',
+                'art_crop': '/static/img/card_back.png'
+            }
+
+        # Add default values for other commonly accessed fields
+        if 'normal_price' not in card_dict:
+            card_dict['normal_price'] = None
+
+        if 'mana_cost' not in card_dict:
+            card_dict['mana_cost'] = ''
+
+        if 'rulings' not in card_dict:
+            card_dict['rulings'] = []
+
+        # Get other printings and cards by the same artist if needed
+        other_printings = []
+        cards_by_artist = []
+
+        # Only try to get these if we have the required fields
+        if 'name' in card_dict and card_dict['name']:
+            other_printings = list(cards_collection.find(
+                {"name": card_dict['name'], "id": {"$ne": card_id}}
+            ).limit(6))
+            other_printings = json.loads(json_util.dumps(other_printings))
+
+        if 'artist' in card_dict and card_dict['artist']:
+            cards_by_artist = list(cards_collection.find(
+                {"artist": card_dict['artist'], "id": {"$ne": card_id}}
+            ).limit(6))
+            cards_by_artist = json.loads(json_util.dumps(cards_by_artist))
+
+        print(f"Card found: {card_dict.get('name', 'Unknown')}")
+
+        # Debugging
+        print(f"Card data structure: {sorted(card_dict.keys())}")
+        if 'image_uris' in card_dict:
+            print(f"Image URIs structure: {sorted(card_dict['image_uris'].keys())}")
+
+        # Pass all needed data to the template
+        return render_template(
+            'card_detail.html',
+            card=card_dict,
+            other_printings=other_printings,
+            cards_by_artist=cards_by_artist
+        )
 
     except Exception as e:
-        return f"An error occurred: {e}", 500
+        print(f"Error in card_detail: {str(e)}")
+        print(traceback.format_exc())  # This will print the full stack trace
+        return f"An error occurred: {str(e)}", 500
 
     finally:
         total_time = time.time() - start_time
         if 'client' in locals():
             client.close()
             print(f"MongoDB connection closed. Total execution time: {total_time:.2f} seconds")
-
 
 @app.route('/random-card-view')
 def random_card_view():
