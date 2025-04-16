@@ -10,7 +10,7 @@ from datetime import datetime
 import flask
 import numpy as np
 import requests
-from bson import ObjectId
+from bson import ObjectId, json_util
 from flask import Flask, url_for, redirect, jsonify
 from flask import request, render_template, Response
 from flask_caching import Cache
@@ -578,6 +578,281 @@ def search():
     )
 
 
+
+@app.route('/card/rulings/<id_value>', methods=['GET'])
+def get_card_rulings(id_value):
+    """
+    Get rulings for a card by either its Scryfall ID or TCGPlayer ID
+    and store the rulings data array in the rulingsDetails field
+    """
+    # Initialize MongoDB connection
+    client = MongoClient('mongodb://localhost:27017/')
+    db = client['mtgdbmongo']
+    cards_collection = db['cards']
+
+    # Try to determine what type of ID was provided
+    card = None
+    id_type = None
+
+    # Check if it looks like a Scryfall ID (UUID format)
+    if '-' in id_value and len(id_value) > 30:
+        logger.info(f"Looking for card with Scryfall ID: {id_value}")
+        card = cards_collection.find_one({"id": id_value})
+        id_type = "Scryfall ID"
+
+    # If not found, try to convert to integer for TCGPlayer ID
+    if not card:
+        try:
+            tcgplayer_id = int(id_value)
+            logger.info(f"Looking for card with TCGPlayer ID: {tcgplayer_id}")
+
+            # Try different possible fields for TCGPlayer ID
+            card = cards_collection.find_one({"tcgplayer_id": tcgplayer_id})
+
+            if not card:
+                card = cards_collection.find_one({"tcgplayer.id": tcgplayer_id})
+
+            if not card:
+                card = cards_collection.find_one({"identifiers.tcgplayer_id": str(tcgplayer_id)})
+
+            if not card:
+                card = cards_collection.find_one({"identifiers.tcgplayer": str(tcgplayer_id)})
+
+            id_type = "TCGPlayer ID"
+        except ValueError:
+            # Not an integer, so not a TCGPlayer ID
+            pass
+
+    if not card:
+        logger.error(f"Card not found with provided ID: {id_value}")
+        return jsonify({
+            "error": "Card not found",
+            "details": "Could not find a card with the provided ID",
+            "provided_id": id_value
+        }), 404
+
+    logger.info(f"Found card: {card.get('name', 'Unknown')} using {id_type}")
+
+    # Check if we already have rulings data stored
+    if card.get('rulingsDetails'):
+        logger.info(f"Card already has rulings data stored in rulingsDetails")
+        # Convert the MongoDB document to a Python dictionary with ObjectId converted to string
+        card_dict = json.loads(json_util.dumps(card))
+        return jsonify({
+            "message": "Retrieved rulings from database",
+            "card": card_dict
+        })
+
+    # Get the Scryfall ID for constructing the rulings URI
+    scryfall_id = card.get('id')
+    if not scryfall_id:
+        logger.error(f"Card doesn't have a Scryfall ID")
+        return jsonify({
+            "error": "Missing Scryfall ID",
+            "details": "The card was found but doesn't have a Scryfall ID needed for rulings"
+        }), 500
+
+    # Extract or construct the rulings URI
+    rulings_uri = card.get('rulings_uri')
+
+    if not rulings_uri:
+        # Construct the rulings URI from the card ID
+        rulings_uri = f"https://api.scryfall.com/cards/{scryfall_id}/rulings"
+        logger.info(f"Constructed rulings URI: {rulings_uri}")
+
+    # Make request to Scryfall API
+    try:
+        # Add a small delay to respect Scryfall's rate limits
+        time.sleep(0.11)
+
+        logger.info(f"Making request to: {rulings_uri}")
+        response = requests.get(rulings_uri)
+        response.raise_for_status()  # Raise an exception for HTTP errors
+
+        rulings_data = response.json()
+
+        # Extract only the data array from the rulings response
+        rulings_details = rulings_data.get('data', [])
+        ruling_count = len(rulings_details)
+        logger.info(f"Got response with {ruling_count} rulings")
+
+        # Update the card document with just the rulings data array in rulingsDetails
+        cards_collection.update_one(
+            {"_id": card["_id"]},
+            {"$set": {"rulingsDetails": rulings_details}}
+        )
+
+        # Fetch the updated card
+        updated_card = cards_collection.find_one({"_id": card["_id"]})
+
+        # Convert to dictionary with ObjectId converted to string
+        updated_card_dict = json.loads(json_util.dumps(updated_card))
+
+        # Return the updated card with rulings included
+        return jsonify({
+            "message": "Retrieved rulings from Scryfall API and stored in database",
+            "card": updated_card_dict
+        })
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch rulings: {str(e)}")
+        return jsonify({
+            "error": "Failed to fetch rulings",
+            "details": str(e)
+        }), 500
+
+
+
+@app.route('/update-all-rulings', methods=['POST'])
+def update_all_rulings():
+    """Update the rulings for all cards in the database"""
+    # This could be a long-running task, consider implementing as a background job
+    client = MongoClient('mongodb://localhost:27017/')
+    db = client['mtgdbmongo']
+    cards_collection = db['cards']
+
+    # Find all cards without rulingsData
+    cards_without_rulings = list(cards_collection.find(
+        {"rulingsData": {"$exists": False}},
+        {"id": 1, "name": 1}
+    ))
+
+    logger.info(f"Found {len(cards_without_rulings)} cards without rulings data")
+
+    updated_count = 0
+    for card in cards_without_rulings:
+        card_id = card.get('id')
+        if not card_id:
+            continue
+
+        # Create the rulings URI
+        rulings_uri = f"https://api.scryfall.com/cards/{card_id}/rulings"
+
+        try:
+            # Respect Scryfall's rate limits with a delay between requests
+            time.sleep(0.1)
+
+            response = requests.get(rulings_uri)
+            if response.status_code == 200:
+                rulings_data = response.json()
+
+                # Update the card with the rulings data
+                cards_collection.update_one(
+                    {"id": card_id},
+                    {"$set": {"rulingsData": rulings_data}}
+                )
+
+                updated_count += 1
+                if updated_count % 10 == 0:
+                    logger.info(f"Updated {updated_count} cards so far")
+        except Exception as e:
+            logger.error(f"Error updating rulings for card {card.get('name')}: {str(e)}")
+
+    return jsonify({
+        "message": f"Updated rulings for {updated_count} cards",
+        "total_cards": len(cards_without_rulings)
+    })
+
+
+
+app.route('/card/<card_id>/<card_slug>', methods=['GET'])
+
+
+def get_card_by_id_and_slug(card_id, card_slug):
+    """
+    Get a card by its ID and slug, then render the card_detail.html template.
+
+    The card_id can be either a Scryfall ID or TCGPlayer ID.
+    The card_slug is typically a URL-friendly version of the card name.
+    """
+    # Initialize MongoDB connection
+    client = MongoClient('mongodb://localhost:27017/')
+    db = client['mtgdbmongo']
+    cards_collection = db['cards']
+
+    # Try to determine what type of ID was provided
+    card = None
+    id_type = None
+
+    # Check if it looks like a Scryfall ID (UUID format)
+    if '-' in card_id and len(card_id) > 30:
+        logger.info(f"Looking for card with Scryfall ID: {card_id}")
+        card = cards_collection.find_one({"id": card_id})
+        id_type = "Scryfall ID"
+
+    # If not found, try to convert to integer for TCGPlayer ID
+    if not card:
+        try:
+            tcgplayer_id = int(card_id)
+            logger.info(f"Looking for card with TCGPlayer ID: {tcgplayer_id}")
+
+            # Try different possible fields for TCGPlayer ID
+            card = cards_collection.find_one({"tcgplayer_id": tcgplayer_id})
+
+            if not card:
+                card = cards_collection.find_one({"tcgplayer.id": tcgplayer_id})
+
+            if not card:
+                card = cards_collection.find_one({"identifiers.tcgplayer_id": str(tcgplayer_id)})
+
+            if not card:
+                card = cards_collection.find_one({"identifiers.tcgplayer": str(tcgplayer_id)})
+
+            id_type = "TCGPlayer ID"
+        except ValueError:
+            # Not an integer, so not a TCGPlayer ID
+            pass
+
+    if not card:
+        logger.error(f"Card not found with provided ID: {card_id}")
+        return render_template(
+            'error.html',
+            error_message=f"Card not found with ID: {card_id}",
+            error_details="Could not find a card with the provided ID."
+        ), 404
+
+    # You can optionally verify that the slug matches the card name
+    card_name = card.get('name', '')
+    expected_slug = card_name.lower().replace(' ', '-').replace(',', '').replace("'", '')
+
+    # Optional: Log if the provided slug doesn't match the expected one
+    if card_slug != expected_slug:
+        logger.info(
+            f"Note: Provided slug '{card_slug}' doesn't match expected '{expected_slug}' for card '{card_name}'")
+
+    logger.info(f"Found card: {card_name} using {id_type}")
+
+    # Check if the card has an image
+    has_image = bool(card.get('image_uris') or
+                     (card.get('card_faces') and
+                      any('image_uris' in face for face in card.get('card_faces', []))))
+
+    # Get rulings if available
+    rulings = card.get('rulingsDetails', [])
+
+    # Get card price information if available
+    prices = card.get('prices', {})
+
+    # Get card legality information
+    legalities = card.get('legalities', {})
+
+    # Get related card versions if needed
+    # This would require an additional query which we'll skip for now
+
+    # Render the card detail template with the card data
+    return render_template(
+        'card_detail.html',
+        card=card,
+        card_id=card_id,
+        card_slug=card_slug,
+        card_name=card_name,
+        has_image=has_image,
+        rulings=rulings,
+        prices=prices,
+        legalities=legalities
+    )
+
+
 @app.route('/artists/<artist_name>')
 def get_cards_by_artist(artist_name):
     # Initialize MongoDB connection
@@ -608,7 +883,7 @@ def art_gallery():
         cards=cards
     )
 
-
+@app.route('/card/<card_id>', defaults={'card_slug': None})
 @app.route('/card/<card_id>/<card_slug>')
 def card_detail(card_id, card_slug):
     import time
@@ -618,8 +893,7 @@ def card_detail(card_id, card_slug):
     from bson import json_util
     import traceback
 
-    start_time = time.time()
-    # print(f"Starting card detail request for id: {card_id}")
+    start_time = time.time()  # Added missing variable
 
     try:
         # Initialize MongoDB connection
@@ -638,19 +912,26 @@ def card_detail(card_id, card_slug):
                 pass
 
         # If still not found, try by slug
-        if card is None:
+        if card is None and card_slug is not None:
             card = cards_collection.find_one({"slug": card_slug})
 
         # If still not found, try other fields
         if card is None:
-            potential_id_fields = ["oracle_id", "mtgo_id", "arena_id", "tcgplayer_id", "cardmarket_id"]
+            potential_id_fields = ["oracle_id", "mtgo_id", "arena_id", "tcgplayer_id"]
             for field in potential_id_fields:
-                card = cards_collection.find_one({field: card_id})
-                if card:
-                    break
+                try:
+                    # Try both string and int versions of the ID
+                    card = cards_collection.find_one({field: card_id})
+                    if not card:
+                        card = cards_collection.find_one({field: int(card_id)})
+                    if card:
+                        break
+                except (ValueError, TypeError):
+                    # If conversion to int fails, continue to next field
+                    continue
 
         if card is None:
-            print(f"Card not found for id: {card_id} and slug: {card_slug}")
+            logger.error(f"Card not found for id: {card_id} and slug: {card_slug}")
             return "Card not found", 404
 
         # Process the card data to ensure all required fields exist
@@ -671,7 +952,10 @@ def card_detail(card_id, card_slug):
         if 'mana_cost' not in card_dict:
             card_dict['mana_cost'] = ''
 
-        if 'rulings' not in card_dict:
+        # Use rulings from rulingsDetails if available, otherwise use empty list
+        if 'rulingsDetails' in card_dict:
+            card_dict['rulings'] = card_dict['rulingsDetails']
+        elif 'rulings' not in card_dict:
             card_dict['rulings'] = []
 
         # Get other printings and cards by the same artist if needed
@@ -691,12 +975,15 @@ def card_detail(card_id, card_slug):
             ).limit(6))
             cards_by_artist = json.loads(json_util.dumps(cards_by_artist))
 
-        # print(f"Card found: {card_dict.get('name', 'Unknown')}")
+        logger.info(f"Card found: {card_dict.get('name', 'Unknown')}")
 
-        # Debugging
-        # print(f"Card data structure: {sorted(card_dict.keys())}")
-        # if 'image_uris' in card_dict:
-        #     print(f"Image URIs structure: {sorted(card_dict['image_uris'].keys())}")
+        # If card_slug is None or doesn't match expected slug, redirect to the proper URL
+        if card_slug is None:
+            # Generate a slug from the card name if it exists
+            if 'name' in card_dict and card_dict['name']:
+                proper_slug = card_dict['name'].lower().replace(' ', '-').replace(',', '').replace("'", '')
+                # Redirect to URL with proper slug
+                return redirect(url_for('card_detail', card_id=card_id, card_slug=proper_slug))
 
         # Pass all needed data to the template
         return render_template(
@@ -707,16 +994,15 @@ def card_detail(card_id, card_slug):
         )
 
     except Exception as e:
-        print(f"Error in card_detail: {str(e)}")
-        print(traceback.format_exc())  # This will print the full stack trace
+        logger.error(f"Error in card_detail: {str(e)}")
+        logger.error(traceback.format_exc())  # This will print the full stack trace
         return f"An error occurred: {str(e)}", 500
 
     finally:
         total_time = time.time() - start_time
+        logger.info(f"Card detail request completed in {total_time:.2f} seconds")
         if 'client' in locals():
             client.close()
-            # print(f"MongoDB connection closed. Total execution time: {total_time:.2f} seconds")
-
 @app.route('/')
 def index():
     try:

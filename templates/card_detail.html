@@ -155,9 +155,9 @@
                 data-bs-custom-class="custom-tooltip"
                 data-bs-title="Our proprietary formula to calculate a globally relevant price estimate.">
 
-                <strong>Delta Price *: </strong>
+{#                <strong>Delta Price *: </strong>#}
 
-                ${{ card.normal_price | round(2) if card.normal_price is not none and card.normal_price is float else '--' }}
+{#                ${{ card.normal_price | round(2) if card.normal_price is not none and card.normal_price is float else '--' }}#}
             </span>
 
         <p><strong>Type:</strong> {{ card.type_line }}</p>
@@ -171,6 +171,8 @@
         {% if card.flavor_text %}
             <p><em>{{ card.flavor_text | safe }}</em></p>
         {% endif %}
+
+
 
 
         <!-- After card text and before accordion -->
@@ -191,7 +193,7 @@
 
 
         <div class="accordion my-5" id="richCardAccordion">
-            {% if card.rulings and card.rulings|length > 0 %}
+            {% if card.rulingsDetails and card.rulingsDetails|length > 0 %}
                 {% include "_card_rulings.html" %}
             {% endif %}
             <div class="accordion-item">
@@ -223,15 +225,12 @@
 
 {% if other_printings %}
 <div class="container my-5">
-    <h2 class="text-center my-5">More {{ card.name }} eye candy!<br>
-
-            <img src="{{ card.image_uris.art_crop }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
-</h2>
+    <h2 class="text-center my-5">More {{ card.name }} eye candy!<br></h2>
     <p class="text-center">Flip through the versions that exist in the MTG universe. Different arts, different frames, same epic card – which one's your favorite?</p>
 
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
         {% for card in other_printings %}
-            {% include "_card_component_home.html" %}
+            {% include "_card_component.html" %}
         {% endfor %}
     </div>
 </div>
