@@ -28,7 +28,10 @@ def fast_price_metrics_calculation():
         "name": 1,
         "subTypeName": 1,
         "marketPrice": 1,
-        "lowPrice": 1
+        "lowPrice": 1,
+        "midPrice": 1,
+        "directLowPrice": 1,
+        "tcgplayer_id": 1  # This is used to join with cards collection
     }
 
     # Query for non-foil products
@@ -54,13 +57,76 @@ def fast_price_metrics_calculation():
 
     print(f"Loaded {len(df)} non-foil products into DataFrame")
 
-    # Calculate deltaPrice as mean of marketPrice and lowPrice only
-    print("Calculating deltaPrice...")
-    df['deltaPrice'] = df[['marketPrice', 'lowPrice']].mean(axis=1)
+    # Enrich with card pricing data where available
+    print("Enriching with card pricing data...")
+
+    # Create a dictionary to store card pricing data
+    card_pricing = {}
+
+    # Get unique tcgplayer_ids
+    tcgplayer_ids = df['tcgplayer_id'].dropna().unique().tolist()
+
+    # Query cards collection for pricing data
+    if tcgplayer_ids:
+        card_cursor = cards_collection.find(
+            {"tcgplayer_id": {"$in": tcgplayer_ids}},
+            {"tcgplayer_id": 1, "pricing.usd": 1, "pricing.eur": 1}
+        )
+
+        # Store card pricing data in dictionary for fast lookup
+        for card in card_cursor:
+            tcgplayer_id = card.get("tcgplayer_id")
+            pricing = card.get("pricing", {})
+            card_pricing[tcgplayer_id] = {
+                "usd_price": pricing.get("usd"),
+                "eur_price": pricing.get("eur")
+            }
+
+    # Add card pricing columns to DataFrame
+    df['usd_price'] = df['tcgplayer_id'].map(
+        lambda x: card_pricing.get(x, {}).get('usd_price') if pd.notna(x) else None)
+    df['eur_price'] = df['tcgplayer_id'].map(
+        lambda x: card_pricing.get(x, {}).get('eur_price') if pd.notna(x) else None)
+
+    # Convert price columns to numeric
+    price_columns = ['marketPrice', 'lowPrice', 'midPrice', 'directLowPrice', 'usd_price', 'eur_price']
+    for col in price_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Calculate deltaPrice using all available price sources
+    print("Calculating deltaPrice with multiple price sources...")
+
+    # Create a function to calculate deltaPrice
+    def calculate_delta_price(row):
+        # Collect all available prices
+        prices = []
+        if pd.notna(row.get('marketPrice')):
+            prices.append(row['marketPrice'])
+        if pd.notna(row.get('lowPrice')):
+            prices.append(row['lowPrice'])
+        if pd.notna(row.get('midPrice')):
+            prices.append(row['midPrice'])
+        if pd.notna(row.get('directLowPrice')):
+            prices.append(row['directLowPrice'])
+        if pd.notna(row.get('usd_price')):
+            prices.append(row['usd_price'])
+        if pd.notna(row.get('eur_price')) and row.get('eur_price') != 0:
+            # Convert EUR to USD using approximate exchange rate
+            prices.append(row['eur_price'] * 1.08)  # Apply exchange rate
+
+        # Return mean of available prices
+        return pd.Series(prices).mean() if prices else None
+
+    # Apply the function
+    df['deltaPrice'] = df.apply(calculate_delta_price, axis=1)
 
     # Print a sample for validation
     print("\nValidation sample (5 random records):")
-    sample_fields = ['productId', 'name', 'subTypeName', 'marketPrice', 'lowPrice', 'deltaPrice']
+    sample_fields = [
+        'productId', 'name', 'subTypeName', 'marketPrice', 'lowPrice',
+        'midPrice', 'directLowPrice', 'usd_price', 'eur_price', 'deltaPrice'
+    ]
     sample_fields = [field for field in sample_fields if field in df.columns]
     sample_df = df.sample(min(5, len(df)))[sample_fields]
     print(sample_df)
@@ -68,12 +134,11 @@ def fast_price_metrics_calculation():
     # Calculate buyIndicator
     print("Calculating buyIndicator...")
 
-    # Calculate reference price (mean of marketPrice and deltaPrice)
-    # Only where both marketPrice and lowPrice are available
-    mask = df['marketPrice'].notna() & df['lowPrice'].notna()
-    df.loc[mask, 'reference_price'] = df.loc[mask, ['marketPrice', 'deltaPrice']].mean(axis=1)
+    # Calculate reference price using deltaPrice
+    df['reference_price'] = df['deltaPrice']  # Start with deltaPrice
 
     # Calculate buyIndicator as percentage variance of lowPrice from reference_price
+    mask = (df['lowPrice'].notna()) & (df['reference_price'].notna()) & (df['reference_price'] > 0)
     df.loc[mask, 'buyIndicator'] = ((df.loc[mask, 'lowPrice'] - df.loc[mask, 'reference_price']) /
                                     df.loc[mask, 'reference_price']) * 100
 
@@ -92,6 +157,15 @@ def fast_price_metrics_calculation():
 
         if pd.notna(row.get('buyIndicator')):
             update_fields['buyIndicator'] = float(row['buyIndicator'])
+
+        # Store pricing sources for reference
+        price_sources = {}
+        for price_field in ['marketPrice', 'lowPrice', 'midPrice', 'directLowPrice', 'usd_price', 'eur_price']:
+            if price_field in row and pd.notna(row.get(price_field)):
+                price_sources[price_field] = float(row[price_field])
+
+        if price_sources:
+            update_fields['priceSources'] = price_sources
 
         if update_fields:
             updates.append(pymongo.UpdateOne(
@@ -120,7 +194,7 @@ def fast_price_metrics_calculation():
 
 def verify_metrics_sample():
     """Verify metrics on a small sample of products"""
-    print("\nVerifying metrics on 5 random products...")
+    print("\nVerifying metrics on 17 random products...")
 
     # Query for non-foil products with metrics
     non_foil_query = {
@@ -139,10 +213,17 @@ def verify_metrics_sample():
         sub_type = product.get('subTypeName', 'N/A')
         delta_price = product.get('deltaPrice')
         buy_indicator = product.get('buyIndicator')
+        price_sources = product.get('priceSources', {})
 
         print(f"\nProduct: {product_name} (ID: {product_id})")
         print(f"Type: {sub_type}")
-        print(f"deltaPrice: ${delta_price:.2f}" if delta_price is not None else "deltaPrice: Not available")
+
+        # Print all price sources
+        print("Price Sources:")
+        for source, price in price_sources.items():
+            print(f"  - {source}: ${price:.2f}")
+
+        print(f"Calculated deltaPrice: ${delta_price:.2f}" if delta_price is not None else "deltaPrice: Not available")
 
         if buy_indicator is not None:
             print(f"buyIndicator: {buy_indicator:.2f}%")
@@ -174,14 +255,22 @@ def find_best_buying_opportunities():
     print("==========================")
 
     for i, product in enumerate(opportunities, 1):
+        price_sources = product.get('priceSources', {})
+
         print(f"{i}. {product.get('name', 'Unknown Product')}")
         print(f"   - Product ID: {product.get('productId', 'N/A')}")
         print(f"   - Type: {product.get('subTypeName', 'N/A')}")
-        print(f"   - Low Price: ${product.get('lowPrice', 0):.2f}")
-        print(f"   - Market Price: ${product.get('marketPrice', 0):.2f}")
+
+        # Print all price sources
+        print("   - Price Sources:")
+        for source, price in price_sources.items():
+            print(f"     * {source}: ${price:.2f}")
+
         print(f"   - Delta Price: ${product.get('deltaPrice', 0):.2f}")
         print(f"   - Buy Indicator: {product.get('buyIndicator', 0):.2f}%")
-        print(f"   - Potential Savings: ${abs(product.get('lowPrice', 0) - product.get('marketPrice', 0)):.2f}")
+        if 'lowPrice' in price_sources and 'marketPrice' in price_sources:
+            potential_savings = abs(price_sources['lowPrice'] - price_sources['marketPrice'])
+            print(f"   - Potential Savings: ${potential_savings:.2f}")
         print()
 
 
