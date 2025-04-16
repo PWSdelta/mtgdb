@@ -8,7 +8,7 @@
                     <div class="d-grid gap-3 d-sm-flex justify-content-sm-center justify-content-xl-start">
                         <a class="btn btn-primary btn-lg px-4 me-sm-3" href="/gallery">Art Gallery</a>
 {#                        <a class="btn btn-success btn-lg px-4 me-sm-3" href="/search">Find Cards</a>#}
-                        <a class="btn btn-outline-light btn-lg px-4" href="/card/{{ hero_card.id }}/{{ hero_card.name | generate_slug }}">What's that card?</a>
+                        <a class="btn btn-outline-light btn-lg px-4" href="/card/{{ hero_card.id }}/{{ hero_card.name | default('card') | generate_slug }}">What's that card?</a>
                     </div>
                 </div>
             </div>

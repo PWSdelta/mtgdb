@@ -175,21 +175,22 @@
 
 
 
+
+
         <!-- After card text and before accordion -->
-{#        <div class="tcgplayer-button-container my-4 text-center">#}
-{##}
-{##}
-{#              <a href="https://www.tcgplayer.com/search/magic/product?q={{ card.name|urlencode }}"#}
-{#                   target="_blank"#}
-{#                   class="btn btn-success btn-lg shadow-sm">#}
-{#                    <i class="bi bi-cart-plus me-2"></i>#}
-{#                    Find at TCGPlayer#}
-{#                </a>#}
+        <div class="tcgplayer-button-container my-4 text-center">
+              <a href="https://www.tcgplayer.com/search/magic/product?q={{ card.name|urlencode }}"
+                   target="_blank"
+                   class="btn btn-success btn-lg shadow-sm">
+                    <i class="bi bi-cart-plus me-2"></i>
+                    Find at TCGPlayer
+                </a>
 {#            <div class="text-muted small mt-2">#}
 {#                Support our site through our affiliate link#}
 {#            </div>#}
-{#        </div>#}
+        </div>
 
+        <div>{% include "_spot_pricing.html" %}</div>
 
 
         <div class="accordion my-5" id="richCardAccordion">

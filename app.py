@@ -3,28 +3,24 @@ import logging
 import math
 import os
 import random
-import re
 import time
-from datetime import datetime
+import traceback
+from datetime import datetime, timedelta
 
-import flask
-import numpy as np
 import requests
 from bson import ObjectId, json_util
-from flask import Flask, url_for, redirect, jsonify
-from flask import request, render_template, Response
+from flask import Flask, jsonify
+from flask import render_template, Response
 from flask_caching import Cache
 from flask_cors import CORS
 from flask_sitemap import Sitemap
-from markupsafe import Markup
-from sqlalchemy import create_engine, Integer, not_, or_, desc
-from sqlalchemy import inspect
-from sqlalchemy.ext.automap import automap_base
-from sqlalchemy.orm import Session, relationship
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import func
 from pymongo import MongoClient
-
+# from sqlalchemy import create_engine
+# from sqlalchemy import inspect
+# from sqlalchemy.ext.automap import automap_base
+# from sqlalchemy.orm import Session
+# from sqlalchemy.orm import sessionmaker
+# from sqlalchemy.sql import func
 
 # Configure logging
 logging.basicConfig(
@@ -40,10 +36,7 @@ ext = Sitemap(app)
 
 # Determine environment
 ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
-
-
 logger = logging.getLogger(__name__)
-
 CORS(app)
 
 
@@ -60,7 +53,6 @@ collection = db['cards']  # Replace with your actual collection name
 
 
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
 
@@ -93,32 +85,7 @@ app.jinja_env.add_extension('jinja2.ext.do')
 # app.jinja_env.globals['cached_card_image'] = cached_card_image
 
 
-if os.getenv("APP_ENVIRONMENT", "").startswith("DEV"):
-    engine = create_engine(os.environ.get('LOCAL_DB_URL'))
-elif os.getenv("APP_ENVIRONMENT", "").startswith("DEVVV"):
-    engine = create_engine(os.environ.get('RW_DATABASE_URL'))
-else:
-    engine = create_engine(os.environ.get('DATABASE_URL'))
 
-
-# Automatically map the database schema
-Base = automap_base()
-Base.prepare(engine, reflect=True, schema="public")
-inspector = inspect(engine)
-
-
-# Access the automatically generated ORM class
-CardDetails = Base.classes.card_details
-
-
-
-# Initialize the Google Cloud Storage client with explicit credentials
-# storage_client = storage.Client.from_service_account_json('gcs-service-key.json')
-# bucket_name = 'mtgdb-stash-289370'
-#
-
-Session = sessionmaker(bind=engine)
-session = Session()
 
 
 class JSONEncoder(json.JSONEncoder):
@@ -145,213 +112,44 @@ def convert_mongo_doc(doc):
 
 
 def fetch_random_card_from_db():
-    """
-    Fetches a random card entry from the database.
-    """
     try:
-        total_filtered = session.query(func.count(CardDetails.id)).filter(
-            CardDetails.normal_price > 0,
-            CardDetails.image_uris['normal'].isnot(None)
-        ).scalar()
+        # Initialize MongoDB connection
+        client = MongoClient('mongodb://localhost:27017/')
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
 
-        if total_filtered == 0:
-            return None
+        # Find a random card with an image
+        pipeline = [
+            {"$match": {
+                "image_uris.normal": {"$exists": True},
+                "tcgplayer_id": {"$ne": None},
+                "name": {"$exists": True}
+            }},
+            {"$sample": {"size": 1}}
+        ]
 
-        # Pick a random offset within the filtered range.
-        random_offset = random.randint(0, total_filtered - 1)
+        random_card = list(cards_collection.aggregate(pipeline))
 
-        # Limit to one row by applying the offset.
-        random_card = (session.query(CardDetails)
-                       .filter(
-            CardDetails.normal_price > 0,
-            CardDetails.image_uris['normal'].isnot(None)
-        )
-                       .offset(random_offset)
-                       .limit(1)
-                       .first())
+        # Check if we found a card
+        if random_card and len(random_card) > 0:
+            return random_card[0]
 
-        if random_card:
-            print(f"Retrieved random card: {random_card.id}, {random_card.name}")
-            return random_card
-        else:
-            print("No cards found in the database.")
-            return None
+        # Fallback: just get any random card if the pipeline didn't work
+        random_card = cards_collection.find_one({"name": {"$exists": True}})
+        return random_card
     except Exception as e:
-        print(f"An error occurred while fetching a random card: {e}")
-        return None
-
-
-def update_normal_price(card_id):
-    print(f"update_normal_price called for card_id: {card_id}")
-
-    # Fetch card and product data
-    try:
-        card = session.query(CardDetails).filter(CardDetails.id == card_id).first()
-        if not card:
-            raise ValueError(f"No card found with card_id: {card_id}")
-
-        print(f"Card found: {card.name} | tcgplayer_id: {card.tcgplayer_id}")
-
-        product = None
-        if card.tcgplayer_id:  # Only try to find product if tcgplayer_id exists
-            product = session.query(Products).filter(Products.productId == card.tcgplayer_id).first()
-            if product:
-                print(f"Product found: {product.name} | {product.productId}")
-            else:
-                print(f"No product found with tcgplayer_id: {card.tcgplayer_id}")
-
-    except Exception as e:
-        print(f"Error fetching card: {e}")
-        return None
-
-    # Calculate normal price
-    try:
-        prices = card.prices or {}
-        usd_price = float(prices.get('usd', 0) or 0)
-        eur_price = float(prices.get('eur', 0) or 0)
-        low_price = 0.0
-        mid_price = 0.0
-        market_price = 0.0
-        direct_low_price = 0.0
-
-        if product:
-            low_price = float(product.lowPrice or 0)
-            mid_price = float(product.midPrice or 0)
-            market_price = float(product.marketPrice or 0)
-            direct_low_price = float(product.directLowPrice or 0)
-
-        all_prices = [usd_price, eur_price, low_price, mid_price, market_price, direct_low_price]
-        valid_prices = [price for price in all_prices if price > 0]
-
-        # If we don't have product prices but have at least one of usd or eur, use those
-        if not product and (usd_price > 0 or eur_price > 0):
-            valid_prices = [price for price in [usd_price, eur_price] if price > 0]
-            print(f"Using only card prices (no product): {valid_prices}")
-
-        if not valid_prices:
-            raise ValueError(f"No valid prices found for card_id: {card_id}")
-
-        mean_price = float(np.mean(valid_prices))
-        print(f"Calculated mean price for card {card.name}: {mean_price}")
-
-    except Exception as e:
-        print(f"Error calculating normal price: {e}")
-        return None
-
-    # Update the database
-    try:
-        print(f"Updating normal_price for card_id {card.id}")
-        print(f"Old normal_price: {card.normal_price}")
-
-        card.normal_price = round(mean_price, 2)
-        print(f"New normal_price: {card.normal_price}")
-
-        session.commit()
-        print(f"Successfully updated normal_price for card_id {card.id}")
-
-    except Exception as e:
-        print(f"Error during database update, rolling back: {e}")
-        session.rollback()
-        return None
-
-    # Return the updated card
-    return card
-
-
-def record_daily_price(card_detail):
-    """
-    Records the card's normal_price in the spot_prices table using SQLAlchemy UPSERT.
-    One price record per card per day.
-
-    Args:
-        card_detail: The CardDetail object containing the normal_price
-    """
-    from datetime import datetime
-    from sqlalchemy import func
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-    # Skip if normal_price is None or 0
-    if not card_detail.normal_price:
-        print(f"No normal_price available for card {card_detail.id}")
-        return False
-
-    try:
-        current_time = datetime.now()
-
-        # Create an insert statement
-        insert_stmt = pg_insert(SpotPrices.__table__).values(
-            card_id=card_detail.id,
-            price=float(card_detail.normal_price),
-            date=current_time
-        )
-
-        # Create the ON CONFLICT DO UPDATE statement
-        # This checks for conflict on card__id + day
-        upsert_stmt = insert_stmt.on_conflict_do_update(
-            index_elements=[
-                SpotPrices.card_id,
-                func.date(SpotPrices.date)
-            ],
-            set_={
-                'price': float(card_detail.normal_price),
-                'date': current_time
+        print(f"An error occurred while fetching a random card: {str(e)}")
+        # Return a default card if something goes wrong
+        return {
+            "id": "default",
+            "name": "Magic Card",
+            "image_uris": {
+                "normal": "/static/images/card-back.jpg"
             }
-        )
-
-        # Execute the statement
-        session.execute(upsert_stmt)
-        session.commit()
-        print(f"Recorded spot price {card_detail.normal_price} for card {card_detail.id}")
-        return True
-    except Exception as e:
-        session.rollback()
-        print(f"Failed to record spot price: {e}")
-        return False
-
-
-def prettify_keys(sqlalchemy_object):
-    if not hasattr(sqlalchemy_object, "__dict__"):
-        raise ValueError("Expected a SQLAlchemy object with a __dict__ attribute.")
-
-    prettified_data = {}
-    for key, value in sqlalchemy_object.__dict__.items():
-        # Skip private keys (those starting with '_')
-        if not key.startswith('_'):
-            # Check if the value is valid
-            if (
-                    value is not None and  # Exclude None
-                    not (isinstance(value, float) and math.isnan(value)) and  # Exclude float NaN
-                    not (isinstance(value, str) and value.lower() == "nan")  # Exclude string "NaN"
-            ):
-                # Convert camelCase to 'Camel Case'
-                pretty_key = re.sub(r'([a-z])([A-Z])', r'\1 \2', key).title()
-                prettified_data[pretty_key] = value
-
-    return prettified_data
-
-
-def prettify_column_name(column_name):
-    """
-    Converts camelCase field names into human-readable format:
-    e.g., 'productId' -> 'Product Id'
-    """
-    # Insert a space before any uppercase letter that follows a lowercase letter
-    pretty_name = re.sub(r'(?<=\w)([A-Z])', r' \1', column_name)
-    # Capitalize the first letter
-    return pretty_name.title()
-
-
-def prepare_product_data(raw_product):
-    prettified = prettify_keys(raw_product)
-
-    # Custom order for keys
-    custom_order = ['productId', 'name',  'cleanName']
-
-    ordered_data = {key: prettified.pop(key) for key in custom_order if key in prettified}
-
-    # Add any remaining keys at the end
-    ordered_data.update(prettified)
-    return ordered_data
+        }
+    finally:
+        if 'client' in locals():
+            client.close()
 
 
 def generate_sitemap_files():
@@ -420,163 +218,128 @@ def generate_sitemap_files():
             sitemap_file.write('</urlset>')
 
 
-def update_scryfall_prices(card_details):
-    """
-    Fetches price data from Scryfall for a card and updates its prices field in the database.
-
-    Args:
-        card_details: Object containing card data with an 'id' attribute
-        session: Database session for committing the changes
-
-    Returns:
-        bool: True if prices were successfully updated, False otherwise
-    """
-    session = Session()
-    #
-    # try:
-
-    print(f"Fetching Scryfall prices for card {card_details.id}")
-    # Get card data from Scryfall using the ID
-    url = f"https://api.scryfall.com/cards/{card_details.id}"
-    response = requests.get(url)
-    response.raise_for_status()
-
-    # Extract price data from response
-    card_data = response.json()
-    prices = card_data.get("prices", {})
-
-    # Update the prices field of the card
-    card_details.prices = prices
-
-    # Commit changes to database
-    session.commit()
-    print(f"Successfully updated Scryfall prices for card {card_details.id}")
-
-    return True
-
-
 @app.template_filter('generate_slug')
 def generate_slug(text):
     return text.lower().replace(' ', '-').replace(',', '').replace("'", '')
 
-@app.route('/search')
-def search():
-    # If there are no search parameters, just render the form
-    if not any(request.args.values()):
-        return render_template('search.html')
-
-    # Get all search parameters from URL
-    card_name = request.args.get('name', '')
-    card_text = request.args.get('text', '')
-    card_type = request.args.get('type', '')
-    colors = request.args.getlist('colors')
-    colors_str = ''.join(colors)
-    color_match = request.args.get('colorMatch', 'exact')
-    cmc_min = request.args.get('manaMin', '')
-    cmc_max = request.args.get('manaMax', '')
-    rarity = request.args.getlist('rarity')
-    card_set = request.args.get('set', '')
-    mtg_format = request.args.get('format', '')
-    power_min = request.args.get('powerMin', '')
-    power_max = request.args.get('powerMax', '')
-    toughness_min = request.args.get('toughnessMin', '')
-    toughness_max = request.args.get('toughnessMax', '')
-
-    # Start a session
-    session = Session()
-
-    # Build the query using SQLAlchemy's query API
-    query = session.query(CardDetails)
-
-    # Apply filters based on parameters
-    if card_name:
-        query = query.filter(CardDetails.name.ilike(f'%{card_name}%'))
-
-    if card_text:
-        query = query.filter(CardDetails.oracle_text.ilike(f'%{card_text}%'))
-
-    if card_type:
-        types = card_type.split(',')
-        type_filters = [CardDetails.type_line.ilike(f'%{t}%') for t in types]
-        query = query.filter(or_(*type_filters))
-
-    if colors_str:
-        # Handle color matching based on color_match parameter
-        if color_match == 'exact':
-            # Exact color match (no more, no less)
-            query = query.filter(CardDetails.colors == colors_str)
-        elif color_match == 'includes':
-            # Must include all specified colors (may have more)
-            for color in colors_str:
-                query = query.filter(CardDetails.colors.ilike(f'%{color}%'))
-        elif color_match == 'at-most':
-            # Only the specified colors, but not necessarily all of them
-            for color in 'WUBRG':
-                if color not in colors_str:
-                    query = query.filter(not_(CardDetails.colors.ilike(f'%{color}%')))
-
-    if cmc_min:
-        query = query.filter(CardDetails.cmc >= float(cmc_min))
-
-    if cmc_max:
-        query = query.filter(CardDetails.cmc <= float(cmc_max))
-
-    if rarity:
-        query = query.filter(CardDetails.rarity.in_(rarity))
-
-    if card_set:
-        sets = card_set.split(',')
-        query = query.filter(CardDetails.set_code.in_(sets))
-
-    if mtg_format:
-        # This depends on how you store format legality in your database
-        # For example, if you have a column named standard_legal
-        format_column = getattr(CardDetails, f"{mtg_format}_legal")
-        query = query.filter(format_column == True)
-
-    # Handle power/toughness for creatures
-    # Note: Since power/toughness can be non-numeric (like '*'), we need to be careful
-    if power_min:
-        # Filter only numeric power values greater than or equal to power_min
-        query = query.filter(CardDetails.power.op('REGEXP')('^[0-9]+$'))
-        query = query.filter(func.cast(CardDetails.power, Integer) >= int(power_min))
-
-    if power_max:
-        query = query.filter(CardDetails.power.op('REGEXP')('^[0-9]+$'))
-        query = query.filter(func.cast(CardDetails.power, Integer) <= int(power_max))
-
-    if toughness_min:
-        query = query.filter(CardDetails.toughness.op('REGEXP')('^[0-9]+$'))
-        query = query.filter(func.cast(CardDetails.toughness, Integer) >= int(toughness_min))
-
-    if toughness_max:
-        query = query.filter(CardDetails.toughness.op('REGEXP')('^[0-9]+$'))
-        query = query.filter(func.cast(CardDetails.toughness, Integer) <= int(toughness_max))
-
-    # Count total results for pagination before applying limits
-    total_cards = query.count()
-
-    # Add pagination
-    page = request.args.get('page', 1, type=int)
-    per_page = 30  # Cards per page
-    cards = query.order_by(CardDetails.name).offset((page - 1) * per_page).limit(per_page).all()
-
-    total_pages = (total_cards + per_page - 1) // per_page
-
-    # Close the session
-    session.close()
-
-    # Render the template with results and search parameters
-    return render_template(
-        'search.html',
-        cards=cards,
-        total_cards=total_cards,
-        page=page,
-        total_pages=total_pages,
-        search_params=request.args,
-        url_query_string=request.query_string.decode()
-    )
-
+# @app.route('/search')
+# def search():
+#     # If there are no search parameters, just render the form
+#     if not any(request.args.values()):
+#         return render_template('search.html')
+#
+#     # Get all search parameters from URL
+#     card_name = request.args.get('name', '')
+#     card_text = request.args.get('text', '')
+#     card_type = request.args.get('type', '')
+#     colors = request.args.getlist('colors')
+#     colors_str = ''.join(colors)
+#     color_match = request.args.get('colorMatch', 'exact')
+#     cmc_min = request.args.get('manaMin', '')
+#     cmc_max = request.args.get('manaMax', '')
+#     rarity = request.args.getlist('rarity')
+#     card_set = request.args.get('set', '')
+#     mtg_format = request.args.get('format', '')
+#     power_min = request.args.get('powerMin', '')
+#     power_max = request.args.get('powerMax', '')
+#     toughness_min = request.args.get('toughnessMin', '')
+#     toughness_max = request.args.get('toughnessMax', '')
+#
+#     # Start a session
+#     session = Session()
+#
+#     # Build the query using SQLAlchemy's query API
+#     query = session.query(CardDetails)
+#
+#     # Apply filters based on parameters
+#     if card_name:
+#         query = query.filter(CardDetails.name.ilike(f'%{card_name}%'))
+#
+#     if card_text:
+#         query = query.filter(CardDetails.oracle_text.ilike(f'%{card_text}%'))
+#
+#     if card_type:
+#         types = card_type.split(',')
+#         type_filters = [CardDetails.type_line.ilike(f'%{t}%') for t in types]
+#         query = query.filter(or_(*type_filters))
+#
+#     if colors_str:
+#         # Handle color matching based on color_match parameter
+#         if color_match == 'exact':
+#             # Exact color match (no more, no less)
+#             query = query.filter(CardDetails.colors == colors_str)
+#         elif color_match == 'includes':
+#             # Must include all specified colors (may have more)
+#             for color in colors_str:
+#                 query = query.filter(CardDetails.colors.ilike(f'%{color}%'))
+#         elif color_match == 'at-most':
+#             # Only the specified colors, but not necessarily all of them
+#             for color in 'WUBRG':
+#                 if color not in colors_str:
+#                     query = query.filter(not_(CardDetails.colors.ilike(f'%{color}%')))
+#
+#     if cmc_min:
+#         query = query.filter(CardDetails.cmc >= float(cmc_min))
+#
+#     if cmc_max:
+#         query = query.filter(CardDetails.cmc <= float(cmc_max))
+#
+#     if rarity:
+#         query = query.filter(CardDetails.rarity.in_(rarity))
+#
+#     if card_set:
+#         sets = card_set.split(',')
+#         query = query.filter(CardDetails.set_code.in_(sets))
+#
+#     if mtg_format:
+#         # This depends on how you store format legality in your database
+#         # For example, if you have a column named standard_legal
+#         format_column = getattr(CardDetails, f"{mtg_format}_legal")
+#         query = query.filter(format_column == True)
+#
+#     # Handle power/toughness for creatures
+#     # Note: Since power/toughness can be non-numeric (like '*'), we need to be careful
+#     if power_min:
+#         # Filter only numeric power values greater than or equal to power_min
+#         query = query.filter(CardDetails.power.op('REGEXP')('^[0-9]+$'))
+#         query = query.filter(func.cast(CardDetails.power, Integer) >= int(power_min))
+#
+#     if power_max:
+#         query = query.filter(CardDetails.power.op('REGEXP')('^[0-9]+$'))
+#         query = query.filter(func.cast(CardDetails.power, Integer) <= int(power_max))
+#
+#     if toughness_min:
+#         query = query.filter(CardDetails.toughness.op('REGEXP')('^[0-9]+$'))
+#         query = query.filter(func.cast(CardDetails.toughness, Integer) >= int(toughness_min))
+#
+#     if toughness_max:
+#         query = query.filter(CardDetails.toughness.op('REGEXP')('^[0-9]+$'))
+#         query = query.filter(func.cast(CardDetails.toughness, Integer) <= int(toughness_max))
+#
+#     # Count total results for pagination before applying limits
+#     total_cards = query.count()
+#
+#     # Add pagination
+#     page = request.args.get('page', 1, type=int)
+#     per_page = 30  # Cards per page
+#     cards = query.order_by(CardDetails.name).offset((page - 1) * per_page).limit(per_page).all()
+#
+#     total_pages = (total_cards + per_page - 1) // per_page
+#
+#     # Close the session
+#     session.close()
+#
+#     # Render the template with results and search parameters
+#     return render_template(
+#         'search.html',
+#         cards=cards,
+#         total_cards=total_cards,
+#         page=page,
+#         total_pages=total_pages,
+#         search_params=request.args,
+#         url_query_string=request.query_string.decode()
+#     )
+#
 
 
 @app.route('/card/rulings/<id_value>', methods=['GET'])
@@ -754,103 +517,228 @@ def update_all_rulings():
     })
 
 
+def fetch_single_card_spot_price(card_dict, db):
+    try:
+        card_name = card_dict.get('name', 'Unknown')
+        logger.info(f"Starting spot price fetch for card: {card_name}")
 
-app.route('/card/<card_id>/<card_slug>', methods=['GET'])
+        # Extract necessary collections
+        products_collection = db['products']
+        spotprices_collection = db['spotprices']
 
+        # Extract Scryfall ID
+        card_id = card_dict.get('id')
+        if not card_id:
+            logger.warning(f"No Scryfall ID found for card {card_name}")
+            return None
 
-def get_card_by_id_and_slug(card_id, card_slug):
-    """
-    Get a card by its ID and slug, then render the card_detail.html template.
+        # Check if we already have a recent spotprice for this card
+        # Get the most recent price record from last 24 hours
+        one_day_ago = datetime.utcnow() - timedelta(days=1)
+        recent_spotprice = spotprices_collection.find_one({
+            "card_id": card_id,
+            "timestamp": {"$gte": one_day_ago}
+        }, sort=[("timestamp", -1)])
 
-    The card_id can be either a Scryfall ID or TCGPlayer ID.
-    The card_slug is typically a URL-friendly version of the card name.
-    """
-    # Initialize MongoDB connection
-    client = MongoClient('mongodb://localhost:27017/')
-    db = client['mtgdbmongo']
-    cards_collection = db['cards']
+        if recent_spotprice:
+            logger.info(f"Found recent spotprice from {recent_spotprice['timestamp']} for {card_name}")
 
-    # Try to determine what type of ID was provided
-    card = None
-    id_type = None
+            # We'll continue to check for updated prices, but we already have a record
+            existing_spotprice = True
+        else:
+            logger.info(f"No recent spotprice found for {card_name}, will create new record")
+            existing_spotprice = False
 
-    # Check if it looks like a Scryfall ID (UUID format)
-    if '-' in card_id and len(card_id) > 30:
-        logger.info(f"Looking for card with Scryfall ID: {card_id}")
-        card = cards_collection.find_one({"id": card_id})
-        id_type = "Scryfall ID"
+        # Extract TCGPlayer ID based on where it might be stored in the card data
+        tcgplayer_id = None
+        if "tcgplayer_id" in card_dict and card_dict["tcgplayer_id"]:
+            tcgplayer_id = card_dict["tcgplayer_id"]
+        elif "identifiers" in card_dict and "tcgplayer_id" in card_dict["identifiers"] and card_dict["identifiers"][
+            "tcgplayer_id"]:
+            tcgplayer_id = card_dict["identifiers"]["tcgplayer_id"]
+        elif "tcgplayer" in card_dict and "id" in card_dict["tcgplayer"] and card_dict["tcgplayer"]["id"]:
+            tcgplayer_id = card_dict["tcgplayer"]["id"]
 
-    # If not found, try to convert to integer for TCGPlayer ID
-    if not card:
+        # Convert string IDs to integers if needed
+        if isinstance(tcgplayer_id, str):
+            try:
+                tcgplayer_id_int = int(tcgplayer_id)
+            except (ValueError, TypeError):
+                tcgplayer_id_int = None
+        else:
+            tcgplayer_id_int = tcgplayer_id
+
+        # Find the matching product using productId (as confirmed by user)
+        product = None
+        if tcgplayer_id_int:
+            # Try integer version
+            product = products_collection.find_one({"productId": tcgplayer_id_int})
+            # Try string version if integer version fails
+            if not product:
+                product = products_collection.find_one({"productId": str(tcgplayer_id_int)})
+
+        # If product not found by TCGPlayer ID, try other fields
+        if not product:
+            # Try Scryfall ID
+            product = products_collection.find_one({"scryfall_id": card_id})
+            # Try by name and set as fallback
+            if not product and 'name' in card_dict and 'set' in card_dict:
+                product = products_collection.find_one({
+                    "name": card_dict['name'],
+                    "set": card_dict['set']
+                })
+
+        # Extract prices directly from the card data if they exist
+        scryfall_prices = {}
+        if 'prices' in card_dict:
+            scryfall_prices = card_dict.get('prices', {})
+        else:
+            # If prices not in card data, fetch from Scryfall API
+            scryfall_url = f"https://api.scryfall.com/cards/{card_id}"
+            response = requests.get(scryfall_url)
+            if response.status_code == 200:
+                scryfall_data = response.json()
+                scryfall_prices = scryfall_data.get('prices', {})
+            else:
+                logger.warning(f"Failed to get data from Scryfall for card ID {card_id}: {response.status_code}")
+
+        # Extract Scryfall prices
+        usd = scryfall_prices.get('usd')
+        usd_foil = scryfall_prices.get('usd_foil')
+        usd_etched = scryfall_prices.get('usd_etched')
+        eur = scryfall_prices.get('eur')
+        eur_foil = scryfall_prices.get('eur_foil')
+        tix = scryfall_prices.get('tix')
+
+        # Clean up prices - convert to float or None
+        clean_scryfall_prices = {
+            "usd": float(usd) if usd else None,
+            "usd_foil": float(usd_foil) if usd_foil else None,
+            "usd_etched": float(usd_etched) if usd_etched else None,
+            "eur": float(eur) if eur else None,
+            "eur_foil": float(eur_foil) if eur_foil else None,
+            "tix": float(tix) if tix else None
+        }
+
+        # Extract prices from product if we have one
+        product_prices = {}
+        if product:
+            # Extract TCGPlayer price data
+            if 'prices' in product:
+                price_obj = product['prices']
+                if isinstance(price_obj, dict):
+                    for price_type, price_value in price_obj.items():
+                        if price_value is not None:
+                            try:
+                                if isinstance(price_value, str):
+                                    product_prices[price_type] = float(price_value)
+                                else:
+                                    product_prices[price_type] = price_value
+                            except (ValueError, TypeError):
+                                product_prices[price_type] = None
+
+            # Check other common price fields
+            price_fields = ['normal', 'foil', 'etched', 'marketPrice', 'buylistMarketPrice', 'buylistPrice',
+                            'lowPrice', 'avgPrice', 'highPrice', 'latestPrice', 'midPrice']
+
+            for field in price_fields:
+                if field in product and product[field] is not None:
+                    try:
+                        if isinstance(product[field], str):
+                            product_prices[field] = float(product[field])
+                        else:
+                            product_prices[field] = product[field]
+                    except (ValueError, TypeError):
+                        product_prices[field] = None
+
+            # Check for other price fields
+            for key in product.keys():
+                if 'price' in key.lower() and key not in product_prices:
+                    try:
+                        if isinstance(product[key], str):
+                            product_prices[key] = float(product[key])
+                        else:
+                            product_prices[key] = product[key]
+                    except (ValueError, TypeError):
+                        product_prices[key] = None
+
+        # Check if we need to create/update the spotprice
+        if existing_spotprice:
+            # Compare prices to see if they've changed
+            prices_changed = False
+
+            # Compare Scryfall prices
+            for price_key, new_price in clean_scryfall_prices.items():
+                old_price = recent_spotprice.get('scryfall_prices', {}).get(price_key)
+                if new_price != old_price:
+                    logger.info(
+                        f"Price change for {card_name}: Scryfall {price_key} changed from {old_price} to {new_price}")
+                    prices_changed = True
+                    break
+
+            # Compare TCGPlayer prices
+            if not prices_changed and product_prices:
+                old_tcg_prices = recent_spotprice.get('tcgplayer_prices', {})
+                # Check for new or changed prices
+                for price_key, new_price in product_prices.items():
+                    old_price = old_tcg_prices.get(price_key)
+                    if new_price != old_price:
+                        logger.info(
+                            f"Price change for {card_name}: TCGPlayer {price_key} changed from {old_price} to {new_price}")
+                        prices_changed = True
+                        break
+
+                # Check for removed prices
+                if not prices_changed:
+                    for price_key in old_tcg_prices:
+                        if price_key not in product_prices:
+                            logger.info(f"Price change for {card_name}: TCGPlayer {price_key} was removed")
+                            prices_changed = True
+                            break
+
+            if not prices_changed:
+                logger.info(f"No price changes detected for {card_name}, using existing spotprice")
+                return recent_spotprice
+
+            logger.info(f"Price changes detected for {card_name}, will create new spotprice")
+
+        # From this point, we need to create a new spotprice record
+        timestamp = datetime.utcnow()
+
+        # Create spotprice document
+        spotprice = {
+            "card_id": card_id,
+            "tcgplayer_id": tcgplayer_id_int if tcgplayer_id_int else tcgplayer_id,
+            "card_name": card_name,
+            "set": card_dict.get('set', None),
+            "collector_number": card_dict.get('collector_number', None),
+            "rarity": card_dict.get('rarity', None),
+            "timestamp": timestamp,
+            "scryfall_prices": clean_scryfall_prices,
+            "tcgplayer_prices": product_prices
+        }
+
+        # Only save if we have any valid prices
+        has_valid_scryfall_prices = any(p is not None for p in clean_scryfall_prices.values())
+        has_valid_tcgplayer_prices = any(p is not None for p in product_prices.values())
+
+        if not has_valid_scryfall_prices and not has_valid_tcgplayer_prices:
+            logger.warning(f"No valid prices found for card {card_name}")
+            return recent_spotprice if existing_spotprice else None
+
+        # Insert into spotprices collection
         try:
-            tcgplayer_id = int(card_id)
-            logger.info(f"Looking for card with TCGPlayer ID: {tcgplayer_id}")
+            result = spotprices_collection.insert_one(spotprice)
+            logger.info(f"Successfully inserted new spotprice with ID: {result.inserted_id}")
+            return spotprice
+        except Exception as db_error:
+            logger.error(f"Database insertion error: {str(db_error)}")
+            return recent_spotprice if existing_spotprice else None
 
-            # Try different possible fields for TCGPlayer ID
-            card = cards_collection.find_one({"tcgplayer_id": tcgplayer_id})
-
-            if not card:
-                card = cards_collection.find_one({"tcgplayer.id": tcgplayer_id})
-
-            if not card:
-                card = cards_collection.find_one({"identifiers.tcgplayer_id": str(tcgplayer_id)})
-
-            if not card:
-                card = cards_collection.find_one({"identifiers.tcgplayer": str(tcgplayer_id)})
-
-            id_type = "TCGPlayer ID"
-        except ValueError:
-            # Not an integer, so not a TCGPlayer ID
-            pass
-
-    if not card:
-        logger.error(f"Card not found with provided ID: {card_id}")
-        return render_template(
-            'error.html',
-            error_message=f"Card not found with ID: {card_id}",
-            error_details="Could not find a card with the provided ID."
-        ), 404
-
-    # You can optionally verify that the slug matches the card name
-    card_name = card.get('name', '')
-    expected_slug = card_name.lower().replace(' ', '-').replace(',', '').replace("'", '')
-
-    # Optional: Log if the provided slug doesn't match the expected one
-    if card_slug != expected_slug:
-        logger.info(
-            f"Note: Provided slug '{card_slug}' doesn't match expected '{expected_slug}' for card '{card_name}'")
-
-    logger.info(f"Found card: {card_name} using {id_type}")
-
-    # Check if the card has an image
-    has_image = bool(card.get('image_uris') or
-                     (card.get('card_faces') and
-                      any('image_uris' in face for face in card.get('card_faces', []))))
-
-    # Get rulings if available
-    rulings = card.get('rulingsDetails', [])
-
-    # Get card price information if available
-    prices = card.get('prices', {})
-
-    # Get card legality information
-    legalities = card.get('legalities', {})
-
-    # Get related card versions if needed
-    # This would require an additional query which we'll skip for now
-
-    # Render the card detail template with the card data
-    return render_template(
-        'card_detail.html',
-        card=card,
-        card_id=card_id,
-        card_slug=card_slug,
-        card_name=card_name,
-        has_image=has_image,
-        rulings=rulings,
-        prices=prices,
-        legalities=legalities
-    )
+    except Exception as e:
+        logger.error(f"Error processing spot price for card {card_dict.get('name', 'Unknown')}: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None
 
 
 @app.route('/artists/<artist_name>')
@@ -892,14 +780,17 @@ def card_detail(card_id, card_slug):
     import json
     from bson import json_util
     import traceback
+    import requests
+    from datetime import datetime
 
-    start_time = time.time()  # Added missing variable
+    start_time = time.time()
 
     try:
         # Initialize MongoDB connection
         client = MongoClient('mongodb://localhost:27017/')
         db = client['mtgdbmongo']
         cards_collection = db['cards']
+        spotprices_collection = db['spotprices']
 
         # Try different approaches to find the card
         card = cards_collection.find_one({"id": card_id})
@@ -920,14 +811,12 @@ def card_detail(card_id, card_slug):
             potential_id_fields = ["oracle_id", "mtgo_id", "arena_id", "tcgplayer_id"]
             for field in potential_id_fields:
                 try:
-                    # Try both string and int versions of the ID
                     card = cards_collection.find_one({field: card_id})
                     if not card:
                         card = cards_collection.find_one({field: int(card_id)})
                     if card:
                         break
                 except (ValueError, TypeError):
-                    # If conversion to int fails, continue to next field
                     continue
 
         if card is None:
@@ -952,11 +841,70 @@ def card_detail(card_id, card_slug):
         if 'mana_cost' not in card_dict:
             card_dict['mana_cost'] = ''
 
-        # Use rulings from rulingsDetails if available, otherwise use empty list
-        if 'rulingsDetails' in card_dict:
-            card_dict['rulings'] = card_dict['rulingsDetails']
-        elif 'rulings' not in card_dict:
-            card_dict['rulings'] = []
+        # Fetch rulings from Scryfall API
+        scryfall_id = card_dict.get('id')
+        rulings_updated = False
+
+        if scryfall_id:
+            try:
+                # Check when rulings were last updated
+                last_updated = card_dict.get('rulings_last_updated')
+                current_time = datetime.utcnow()
+
+                # If rulings have never been updated or were updated more than 7 days ago, fetch them
+                if not last_updated or (current_time - last_updated).days > 7:
+                    rulings_url = f"https://api.scryfall.com/cards/{scryfall_id}/rulings"
+                    response = requests.get(rulings_url)
+
+                    if response.status_code == 200:
+                        rulings_data = response.json()
+
+                        # Update the card with new rulings
+                        if 'data' in rulings_data and isinstance(rulings_data['data'], list):
+                            # Update both the card_dict for current use and the database
+                            card_dict['rulings'] = rulings_data['data']
+                            card_dict['rulingsData'] = rulings_data
+                            card_dict['rulingsDetails'] = rulings_data['data']
+                            card_dict['rulings_last_updated'] = current_time
+
+                            # Update the database with new rulings
+                            cards_collection.update_one(
+                                {"id": scryfall_id},
+                                {"$set": {
+                                    "rulings": rulings_data['data'],
+                                    "rulingsData": rulings_data,
+                                    "rulingsDetails": rulings_data['data'],
+                                    "rulings_last_updated": current_time
+                                }}
+                            )
+
+                            rulings_updated = True
+                            logger.info(f"Rulings updated for card: {card_dict.get('name', 'Unknown')}")
+                        else:
+                            logger.warning(
+                                f"No rulings data found in Scryfall response for card: {card_dict.get('name', 'Unknown')}")
+                    else:
+                        logger.warning(
+                            f"Failed to fetch rulings from Scryfall for card: {card_dict.get('name', 'Unknown')}. Status code: {response.status_code}")
+            except Exception as rulings_error:
+                logger.error(
+                    f"Error fetching rulings for card {card_dict.get('name', 'Unknown')}: {str(rulings_error)}")
+                # Continue processing even if rulings fetch fails
+
+        # Handle rulings - ensure compatibility with both old and new formats
+        # If we didn't update rulings, use existing data
+        if not rulings_updated:
+            # Use rulingsDetails if available for rulings
+            if 'rulingsDetails' in card_dict:
+                card_dict['rulings'] = card_dict['rulingsDetails']
+                # For backward compatibility, also set the data field in rulingsData
+                if 'rulingsData' not in card_dict:
+                    card_dict['rulingsData'] = {'data': card_dict['rulingsDetails']}
+                else:
+                    card_dict['rulingsData']['data'] = card_dict['rulingsDetails']
+            elif 'rulings' not in card_dict:
+                card_dict['rulings'] = []
+                card_dict['rulingsData'] = {'data': []}
 
         # Get other printings and cards by the same artist if needed
         other_printings = []
@@ -977,20 +925,33 @@ def card_detail(card_id, card_slug):
 
         logger.info(f"Card found: {card_dict.get('name', 'Unknown')}")
 
+        # Fetch and create spot price record for this card
+        spot_price = fetch_single_card_spot_price(card_dict, db)
+
+        # Get price history for this card
+        price_history = None
+        if 'id' in card_dict:
+            # Get the last 30 days of price history
+            price_history = list(spotprices_collection.find(
+                {"card_id": card_dict['id']}
+            ).sort("timestamp", -1).limit(30))
+            price_history = json.loads(json_util.dumps(price_history))
+
         # If card_slug is None or doesn't match expected slug, redirect to the proper URL
-        if card_slug is None:
-            # Generate a slug from the card name if it exists
-            if 'name' in card_dict and card_dict['name']:
-                proper_slug = card_dict['name'].lower().replace(' ', '-').replace(',', '').replace("'", '')
-                # Redirect to URL with proper slug
-                return redirect(url_for('card_detail', card_id=card_id, card_slug=proper_slug))
+        if card_slug is None and 'name' in card_dict and card_dict['name']:
+            proper_slug = card_dict['name'].lower().replace(' ', '-').replace(',', '').replace("'", '')
+            # Redirect to URL with proper slug
+            from flask import redirect, url_for
+            return redirect(url_for('card_detail', card_id=card_id, card_slug=proper_slug))
 
         # Pass all needed data to the template
         return render_template(
             'card_detail.html',
             card=card_dict,
             other_printings=other_printings,
-            cards_by_artist=cards_by_artist
+            cards_by_artist=cards_by_artist,
+            current_price=spot_price,
+            price_history=price_history
         )
 
     except Exception as e:
@@ -1003,19 +964,33 @@ def card_detail(card_id, card_slug):
         logger.info(f"Card detail request completed in {total_time:.2f} seconds")
         if 'client' in locals():
             client.close()
+
+
+
 @app.route('/')
 def index():
+    client = None
     try:
         # Initialize MongoDB connection with a timeout
         client = MongoClient('mongodb://localhost:27017/')
         db = client['mtgdbmongo']
         cards_collection = db['cards']
 
-        #========================================================================================
+        # ========================================================================================
 
         hero_card = fetch_random_card_from_db()
 
-        random_cards = list(collection.find(
+        # Safety check for hero_card
+        if not hero_card:
+            hero_card = {
+                "id": "default",
+                "name": "Magic Card",
+                "image_uris": {
+                    "normal": "/static/images/card-back.jpg"
+                }
+            }
+
+        random_cards = list(cards_collection.find(
             {"tcgplayer_id": {"$ne": None}},
             {
                 "_id": 1,
@@ -1040,7 +1015,34 @@ def index():
         print(traceback.format_exc())
         return f"An error occurred: {e}", 500
     finally:
-        session.close()
+        # Safely close the MongoDB client
+        if client:
+            client.close()
+
+
+# @app.route('/wp-admin/setup-config.php', methods=['GET', 'POST'])
+# def fake_wordpress_setup():
+#     # Log the attempt
+#     ip_address = request.remote_addr
+#     user_agent = request.headers.get('User-Agent', 'Unknown')
+#
+#     print(f"WordPress probe attempt detected from IP: {ip_address}, User-Agent: {user_agent}")
+#
+#     # Optional: Log to database or file
+#     with open('intrusion_attempts.log', 'a') as f:
+#         f.write(f"{datetime.now()}, {ip_address}, {user_agent}, wp-admin/setup-config.php\n")
+#
+#     return 404
+
+# @app.route('/asdf', methods=['GET'])
+# def asdf():
+
+
+# @app.route('/asdf')
+# def asdf():
+#     client = MongoClient('mongodb://localhost:27017/')
+#     db = client['mtgdbmongo']
+#     cards_collection = db['cards']
 
 @app.route('/generate_sitemaps')
 def generate_sitemaps():
@@ -1126,7 +1128,8 @@ def generate_sitemaps():
         logger.error(f"Error generating sitemaps: {e}", exc_info=True)
         return jsonify({'success': False, 'message': f'Error generating sitemaps: {str(e)}'}), 500
     finally:
-        db_session.close()
+        if 'client' in locals():
+            client.close()
         logger.info("Sitemap generation completed.")
 
 
@@ -1274,195 +1277,6 @@ Crawl-delay: 10
 """, mimetype='text/plain')
 
 
-
-
-# @app.route('/wp-admin/setup-config.php', methods=['GET', 'POST'])
-# def fake_wordpress_setup():
-#     # Log the attempt
-#     ip_address = request.remote_addr
-#     user_agent = request.headers.get('User-Agent', 'Unknown')
-#
-#     print(f"WordPress probe attempt detected from IP: {ip_address}, User-Agent: {user_agent}")
-#
-#     # Optional: Log to database or file
-#     with open('intrusion_attempts.log', 'a') as f:
-#         f.write(f"{datetime.now()}, {ip_address}, {user_agent}, wp-admin/setup-config.php\n")
-#
-#     return 404
-
-
-
-# @app.route('/asdf', methods=['GET'])
-# def asdf():
-
-#
-#
-# @app.route('/deck/<int:deck_id>')
-# def view_deck(deck_id):
-#     """
-#     Display a single deck and all its card_details.
-#     """
-#     try:
-#         # Get the deck by ID, using our now-working approach
-#         with engine.connect() as connection:
-#             deck_result = connection.execute(
-#                 text("SELECT id, filename, document FROM decks WHERE id = :deck_id"),
-#                 {"deck_id": deck_id}
-#             ).fetchone()
-#
-#             if not deck_result:
-#                 flash(f"Deck with ID {deck_id} not found.", "warning")
-#                 return redirect(url_for('index'))
-#
-#         # Access columns by index since we know this works
-#         deck_id_value = deck_result[0]
-#         filename_value = deck_result[1]
-#         document_value = deck_result[2]  # This should be a dict based on our test
-#
-#         # For debugging
-#         print(f"Processing deck ID: {deck_id_value}")
-#         print(f"Document keys: {document_value.keys() if isinstance(document_value, dict) else 'Not a dict'}")
-#
-#         # Create the final deck dictionary with database fields
-#         final_deck = {
-#             'id': deck_id_value,
-#             'filename': filename_value
-#         }
-#
-#         # Copy over relevant fields from the document
-#         # First determine the main data source - document or document['data']
-#         deck_data = document_value
-#         if isinstance(document_value, dict) and 'data' in document_value:
-#             deck_data = document_value['data']
-#             print("Using 'data' field from document")
-#
-#         # Add all available fields from deck_data
-#         if isinstance(deck_data, dict):
-#             for key, value in deck_data.items():
-#                 final_deck[key] = value
-#             print(f"Added fields from deck_data: {list(deck_data.keys())}")
-#
-#         # Now collect all cards
-#         all_cards = []
-#
-#         # Add commander cards if present
-#         if isinstance(deck_data, dict) and 'commander' in deck_data and deck_data['commander']:
-#             commanders = deck_data['commander']
-#             if isinstance(commanders, list):
-#                 for card in commanders:
-#                     if isinstance(card, dict):
-#                         card_with_flag = card.copy()  # Make a copy to avoid modifying original
-#                         card_with_flag['is_commander'] = True
-#                         all_cards.append(card_with_flag)
-#                 print(f"Added {len(commanders)} commander cards")
-#
-#         # Add regular cards if present
-#         if isinstance(deck_data, dict) and 'cards' in deck_data and deck_data['cards']:
-#             cards = deck_data['cards']
-#             if isinstance(cards, list):
-#                 for card in cards:
-#                     if isinstance(card, dict):
-#                         card_with_flag = card.copy()  # Make a copy to avoid modifying original
-#                         card_with_flag['is_commander'] = False
-#                         all_cards.append(card_with_flag)
-#                 print(f"Added {len(cards)} regular cards")
-#
-#         print(f"Total cards to render: {len(all_cards)}")
-#
-#         # For debugging, print a sample card if available
-#         if all_cards:
-#             print(f"Sample card keys: {list(all_cards[0].keys())}")
-#
-#         # Render the template with our data
-#         return render_template('deck.html', deck=final_deck, cards=all_cards)
-#
-#     except Exception as e:
-#         import traceback
-#         error_details = traceback.format_exc()
-#         print(f"Error when viewing deck {deck_id}:\n{error_details}")
-#         flash(f"An error occurred: {str(e)}", "danger")
-#         return redirect(url_for('index'))
-#
-#
-#
-# @app.route('/decks')
-# def list_decks():
-#     """List all available decks, limited to 31"""
-#     try:
-#         with engine.connect() as connection:
-#             # Fetch decks with a limit of 31
-#             result = connection.execute(text("SELECT id, filename, document FROM decks ORDER BY id LIMIT 31"))
-#
-#             # Convert result rows to dictionaries properly
-#             decks = []
-#             for row in result:
-#                 # Use direct index access which we know works
-#                 deck_id = row[0]
-#                 filename = row[1]
-#                 document = row[2]
-#
-#                 # Create basic deck info
-#                 deck_info = {
-#                     'id': deck_id,
-#                     'filename': filename
-#                 }
-#
-#                 # Extract name and other metadata from document if available
-#                 if isinstance(document, dict):
-#                     deck_data = document.get('data', document)  # Try to get 'data' or use document itself
-#
-#                     if isinstance(deck_data, dict):
-#                         # Add name and other important fields
-#                         deck_info['name'] = deck_data.get('name', 'Unnamed Deck')
-#                         deck_info['type'] = deck_data.get('type', 'Unknown')
-#
-#                         # Count cards if available
-#                         card_count = 0
-#                         if 'cards' in deck_data and isinstance(deck_data['cards'], list):
-#                             card_count += len(deck_data['cards'])
-#                         if 'commander' in deck_data and isinstance(deck_data['commander'], list):
-#                             card_count += len(deck_data['commander'])
-#                         deck_info['card_count'] = card_count
-#
-#                 decks.append(deck_info)
-#
-#         # Now render the template with our list of decks
-#         return render_template('deck_list.html', decks=decks)
-#
-#     except Exception as e:
-#         import traceback
-#         error_details = traceback.format_exc()
-#
-#         # Display the error instead of redirecting
-#         return f"""
-#         <h1>Error in Decks Route</h1>
-#         <p>Error: {str(e)}</p>
-#         <pre>{error_details}</pre>
-#         <p><a href="/">Return to Home</a></p>
-#         """, 500
-#
-
-
-@app.route('/asdf')
-def asdf():
-    client = MongoClient('mongodb://localhost:27017/')
-    db = client['mtgdbmongo']
-    cards_collection = db['cards']
-
-    # Check existing indexes
-    existing_indexes = list(cards_collection.list_indexes())
-    print(f"Existing indexes: {existing_indexes}")
-
-    # Create index on id field if not already present
-    index_names = [idx.get('name') for idx in existing_indexes]
-    if 'id_1' not in index_names:
-        print("Creating index on 'id' field...")
-        cards_collection.create_index("id", background=True)
-        print("Index created!")
-    else:
-        print("Index on 'id' field already exists")
-
-    client.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=2357)
