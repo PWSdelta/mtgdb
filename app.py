@@ -15,12 +15,7 @@ from flask_caching import Cache
 from flask_cors import CORS
 from flask_sitemap import Sitemap
 from pymongo import MongoClient
-# from sqlalchemy import create_engine
-# from sqlalchemy import inspect
-# from sqlalchemy.ext.automap import automap_base
-# from sqlalchemy.orm import Session
-# from sqlalchemy.orm import sessionmaker
-# from sqlalchemy.sql import func
+
 
 # Configure logging
 logging.basicConfig(
@@ -42,7 +37,8 @@ CORS(app)
 
 
 # Connect to MongoDB running on localhost with default port 27017
-client = MongoClient('mongodb://localhost:27017/')
+# client = MongoClient(os.getenv("MONGO_URI"))
+client = MongoClient(os.getenv("MONGO_URI"))
 
 # Access a database
 db = client['mtgdbmongo']  # Replace with your actual database name
@@ -114,7 +110,7 @@ def convert_mongo_doc(doc):
 def fetch_random_card_from_db():
     try:
         # Initialize MongoDB connection
-        client = MongoClient('mongodb://localhost:27017/')
+        client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
 
@@ -349,7 +345,7 @@ def get_card_rulings(id_value):
     and store the rulings data array in the rulingsDetails field
     """
     # Initialize MongoDB connection
-    client = MongoClient('mongodb://localhost:27017/')
+    client = MongoClient(os.getenv("MONGO_URI"))
     db = client['mtgdbmongo']
     cards_collection = db['cards']
 
@@ -470,7 +466,7 @@ def get_card_rulings(id_value):
 def update_all_rulings():
     """Update the rulings for all cards in the database"""
     # This could be a long-running task, consider implementing as a background job
-    client = MongoClient('mongodb://localhost:27017/')
+    client = MongoClient(os.getenv("MONGO_URI"))
     db = client['mtgdbmongo']
     cards_collection = db['cards']
 
@@ -532,21 +528,21 @@ def fetch_single_card_spot_price(card_dict, db):
             logger.warning(f"No Scryfall ID found for card {card_name}")
             return None
 
-        # Check if we already have a recent spotprice for this card
-        # Get the most recent price record from last 24 hours
-        one_day_ago = datetime.utcnow() - timedelta(days=1)
+        # Use date only (strip time) for timestamp
+        # Get today's date at midnight (00:00:00)
+        today_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Check if we already have a spotprice for this card today
         recent_spotprice = spotprices_collection.find_one({
             "card_id": card_id,
-            "timestamp": {"$gte": one_day_ago}
-        }, sort=[("timestamp", -1)])
+            "timestamp": today_date
+        })
 
         if recent_spotprice:
-            logger.info(f"Found recent spotprice from {recent_spotprice['timestamp']} for {card_name}")
-
-            # We'll continue to check for updated prices, but we already have a record
+            logger.info(f"Found spotprice from {recent_spotprice['timestamp'].strftime('%m/%d/%Y')} for {card_name}")
             existing_spotprice = True
         else:
-            logger.info(f"No recent spotprice found for {card_name}, will create new record")
+            logger.info(f"No spotprice found for {card_name} today, will create new record")
             existing_spotprice = False
 
         # Extract TCGPlayer ID based on where it might be stored in the card data
@@ -568,8 +564,9 @@ def fetch_single_card_spot_price(card_dict, db):
         else:
             tcgplayer_id_int = tcgplayer_id
 
-        # Find the matching product using productId (as confirmed by user)
+        # Find the matching product using productId
         product = None
+        game_id = None
         if tcgplayer_id_int:
             # Try integer version
             product = products_collection.find_one({"productId": tcgplayer_id_int})
@@ -587,6 +584,11 @@ def fetch_single_card_spot_price(card_dict, db):
                     "name": card_dict['name'],
                     "set": card_dict['set']
                 })
+
+        # Extract game_id from product if available
+        if product and 'game_id' in product:
+            game_id = product['game_id']
+            logger.info(f"Found game_id: {game_id} for card: {card_name}")
 
         # Extract prices directly from the card data if they exist
         scryfall_prices = {}
@@ -696,24 +698,29 @@ def fetch_single_card_spot_price(card_dict, db):
                             prices_changed = True
                             break
 
+            # Also update if game_id is different or missing
+            if not prices_changed and game_id != recent_spotprice.get('game_id'):
+                logger.info(f"Game ID change for {card_name}: from {recent_spotprice.get('game_id')} to {game_id}")
+                prices_changed = True
+
             if not prices_changed:
                 logger.info(f"No price changes detected for {card_name}, using existing spotprice")
                 return recent_spotprice
 
-            logger.info(f"Price changes detected for {card_name}, will create new spotprice")
+            logger.info(f"Changes detected for {card_name}, will update existing spotprice")
+            # Delete existing record to replace it with an updated one
+            spotprices_collection.delete_one({"_id": recent_spotprice["_id"]})
 
-        # From this point, we need to create a new spotprice record
-        timestamp = datetime.utcnow()
-
-        # Create spotprice document
+        # Create spotprice document using today's date without time
         spotprice = {
             "card_id": card_id,
             "tcgplayer_id": tcgplayer_id_int if tcgplayer_id_int else tcgplayer_id,
+            "game_id": game_id,  # Include game_id in the spotprice document
             "card_name": card_name,
             "set": card_dict.get('set', None),
             "collector_number": card_dict.get('collector_number', None),
             "rarity": card_dict.get('rarity', None),
-            "timestamp": timestamp,
+            "timestamp": today_date,  # Using date only
             "scryfall_prices": clean_scryfall_prices,
             "tcgplayer_prices": product_prices
         }
@@ -729,7 +736,8 @@ def fetch_single_card_spot_price(card_dict, db):
         # Insert into spotprices collection
         try:
             result = spotprices_collection.insert_one(spotprice)
-            logger.info(f"Successfully inserted new spotprice with ID: {result.inserted_id}")
+            logger.info(
+                f"Successfully inserted new spotprice with ID: {result.inserted_id} for date {today_date.strftime('%m/%d/%Y')}")
             return spotprice
         except Exception as db_error:
             logger.error(f"Database insertion error: {str(db_error)}")
@@ -744,7 +752,7 @@ def fetch_single_card_spot_price(card_dict, db):
 @app.route('/artists/<artist_name>')
 def get_cards_by_artist(artist_name):
     # Initialize MongoDB connection
-    client = MongoClient('mongodb://localhost:27017/')
+    client = MongoClient(os.getenv("MONGO_URI"))
     db = client['mtgdbmongo']
     cards_collection = db['cards']
 
@@ -787,7 +795,7 @@ def card_detail(card_id, card_slug):
 
     try:
         # Initialize MongoDB connection
-        client = MongoClient('mongodb://localhost:27017/')
+        client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
         spotprices_collection = db['spotprices']
@@ -972,7 +980,7 @@ def index():
     client = None
     try:
         # Initialize MongoDB connection with a timeout
-        client = MongoClient('mongodb://localhost:27017/')
+        client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
 
@@ -1040,7 +1048,7 @@ def index():
 
 # @app.route('/asdf')
 # def asdf():
-#     client = MongoClient('mongodb://localhost:27017/')
+#     client = MongoClient(os.getenv("MONGO_URI"))
 #     db = client['mtgdbmongo']
 #     cards_collection = db['cards']
 
