@@ -95,9 +95,7 @@
 <div class="container">
 
 
-<article class="card-details">
-
-
+<article class="card-details my-5">
 <div class="row" style="margin-top: 5em;">
     <div class="col">
         <div class="card-image-container">
@@ -146,7 +144,7 @@
           </a>
         </p>
 
-        <p><strong>Set:</strong> <a href="/sets/{{ card.set }}">{{ card.set_name }}</a> </p>
+        <p><strong>Set:</strong> {{ card.set_name }} </p>
         <p><strong>Mana Cost:</strong> <span id="mana-cost-display">{{ card.mana_cost }}</span></p>
 
 
@@ -208,26 +206,18 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        </div
     </div>
 </div>
 </article>
 
+
+
+   <div class="container">
+        <div class="card-image-container">
+            <img src="{{ card.image_uris.art_crop }}" alt="{{ card.name }} - {{ card.set_name }} Magic: The Gathering Card - {{ card.type_line }} by {{ card.artist }}">
+        </div>
+    </div>
 
 
 

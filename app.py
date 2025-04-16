@@ -619,7 +619,7 @@ def card_detail(card_id, card_slug):
     import traceback
 
     start_time = time.time()
-    print(f"Starting card detail request for id: {card_id}")
+    # print(f"Starting card detail request for id: {card_id}")
 
     try:
         # Initialize MongoDB connection
@@ -691,12 +691,12 @@ def card_detail(card_id, card_slug):
             ).limit(6))
             cards_by_artist = json.loads(json_util.dumps(cards_by_artist))
 
-        print(f"Card found: {card_dict.get('name', 'Unknown')}")
+        # print(f"Card found: {card_dict.get('name', 'Unknown')}")
 
         # Debugging
-        print(f"Card data structure: {sorted(card_dict.keys())}")
-        if 'image_uris' in card_dict:
-            print(f"Image URIs structure: {sorted(card_dict['image_uris'].keys())}")
+        # print(f"Card data structure: {sorted(card_dict.keys())}")
+        # if 'image_uris' in card_dict:
+        #     print(f"Image URIs structure: {sorted(card_dict['image_uris'].keys())}")
 
         # Pass all needed data to the template
         return render_template(
@@ -715,7 +715,7 @@ def card_detail(card_id, card_slug):
         total_time = time.time() - start_time
         if 'client' in locals():
             client.close()
-            print(f"MongoDB connection closed. Total execution time: {total_time:.2f} seconds")
+            # print(f"MongoDB connection closed. Total execution time: {total_time:.2f} seconds")
 
 @app.route('/')
 def index():
