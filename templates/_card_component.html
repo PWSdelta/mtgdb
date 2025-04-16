@@ -1,10 +1,10 @@
 <div class="col">
   <div class="card shadow-lg  hover-zoom hover-shadow">
 
-      {{ card|cached_card_image }}
-{#      <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">#}
-{#      <img src="{{ card.normal_image }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">#}
-{#        </a>#}
+
+      <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}">
+          <img src="{{ card.get('image_uris', {}).get('normal', {}) }}" class="card-img-top" alt="{{ card.name }} - {{ card.set_name }}">
+      </a>
 
     <div class="card-body">
       <h5 class="card-title">
