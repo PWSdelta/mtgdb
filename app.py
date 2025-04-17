@@ -400,7 +400,7 @@ def generate_spot_price(card_id):
             return
 
         # Check if we already have a recent spot price (within 24 hours)
-        current_time = datetime.datetime.now()
+        current_time = datetime.now()
         last_spot_price = card.get('spotPrice', {})
 
         if last_spot_price and 'timestamp' in last_spot_price:
@@ -408,7 +408,7 @@ def generate_spot_price(card_id):
             # If using string timestamps, convert to datetime
             if isinstance(last_update, str):
                 try:
-                    last_update = datetime.datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                    last_update = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
                 except:
                     last_update = current_time - datetime.timedelta(days=2)  # Force update
 
