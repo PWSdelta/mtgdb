@@ -1094,7 +1094,7 @@ def asdf():
         cards_collection = db['cards']
         card = fetch_random_card_from_db()
 
-        generate_spot_price(card.id)
+        generate_spot_price(card['id'])
         return 200
 
     except Exception as e:
