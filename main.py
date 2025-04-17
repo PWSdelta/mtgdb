@@ -37,13 +37,13 @@ import os
 from pymongo import MongoClient
 
 # Get the MongoDB URI from the environment variable
-mongodb_uri = os.environ.get("MONGODB_URI")
+mongo_uri = os.environ.get("MONGO_URI")
 
-if mongodb_uri:
-    client = MongoClient(mongodb_uri)
+if mongo_uri:
+    client = MongoClient(mongo_uri)
 else:
     # Fallback to a default URI or handle the error appropriately
-    print("MONGODB_URI environment variable not set.  Using a default or exiting.")
+    print("MONGO_URI environment variable not set.  Using a default or exiting.")
     # Consider raising an exception or exiting if the URI is essential
     client = MongoClient("mongodb://localhost:27017/")  # Replace with a suitable default
 

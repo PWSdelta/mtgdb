@@ -2,4 +2,4 @@ runtime: python310  # Or whichever Python version you're using
 entrypoint: gunicorn -b :8080 main:app
 
 env_variables:
-    MONGODB_URI: "mongodb+srv://pwsdelta_user:asdfghjkl@cluster0.8uviyvr.mongodb.net/mtgdbmongo?retryWrites=true&w=majority&appName=Cluster0"
+    MONGO_URI: "mongodb+srv://pwsdelta_user:asdfghjkl@cluster0.8uviyvr.mongodb.net/mtgdbmongo?retryWrites=true&w=majority&appName=Cluster0"
