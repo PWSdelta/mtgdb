@@ -1099,9 +1099,10 @@ def asdf():
         if not card:
             return f"Didn't fetch the card: {e}", 500
 
-        logger.info(f"Card: {card}")
+        logger.info(f"Card: {card.name}")
 
         generate_spot_price(card['id'])
+        logger.info(f"Inserted spot price for {card.name}")
         return render_template('health.html', card=card)
 
     except Exception as e:
