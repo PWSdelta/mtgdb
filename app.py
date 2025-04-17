@@ -3,13 +3,14 @@ import logging
 import math
 import os
 import random
+import threading
 import time
 import traceback
 from datetime import datetime, timedelta
 
 import requests
 from bson import ObjectId, json_util
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask import render_template, Response
 from flask_caching import Cache
 from flask_cors import CORS
@@ -336,6 +337,116 @@ def generate_slug(text):
 #         url_query_string=request.query_string.decode()
 #     )
 #
+
+
+def handle_card_request(card_id_or_route):
+    """
+    Handler function to process card requests and create spot prices
+    when appropriate, particularly for bot traffic
+    """
+    # 1. Detect if the request is from a bot
+    is_bot = detect_bot_request(request)
+
+    # 2. Process the card request normally
+    card = get_card_data(card_id_or_route)
+
+    # 3. If it's a bot or we need a spot price update, trigger price generation
+    if is_bot or should_update_spot_price(card):
+        # Run in background thread to not slow down the response
+        threading.Thread(target=generate_spot_price, args=(card['id'],)).start()
+
+    return render_card_page(card)
+
+def detect_bot_request(request):
+    """
+    Detect if a request is likely from a bot based on user agent
+    and other request characteristics
+    """
+    user_agent = request.headers.get('User-Agent', '').lower()
+
+    # Common bot identifiers in user agents
+    bot_identifiers = [
+        'bot', 'crawler', 'spider', 'slurp', 'googlebot',
+        'bingbot', 'yandex', 'baidu', 'semrush', 'ahrefsbot',
+        'facebook', 'twitter', 'discordbot'
+    ]
+
+    # Check for bot identifiers in user agent
+    if any(identifier in user_agent for identifier in bot_identifiers):
+        return True
+
+    # Check for missing/suspicious headers often associated with bots
+    if not request.headers.get('Accept-Language'):
+        return True
+
+    # Check for unusual access patterns (optional, requires tracking)
+    # if is_rapid_access_pattern(request.remote_addr):
+    #     return True
+
+    return False
+
+def generate_spot_price(card_id):
+    """
+    Generate and store a spot price for a card
+    """
+    try:
+        # Initialize MongoDB connection
+        client = MongoClient(os.getenv("MONGO_URI"))
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
+
+        # Get the card
+        card = cards_collection.find_one({"id": card_id})
+        if not card:
+            logger.warning(f"Attempted to generate spot price for non-existent card: {card_id}")
+            return
+
+        # Check if we already have a recent spot price (within 24 hours)
+        current_time = datetime.datetime.now()
+        last_spot_price = card.get('spotPrice', {})
+
+        if last_spot_price and 'timestamp' in last_spot_price:
+            last_update = last_spot_price['timestamp']
+            # If using string timestamps, convert to datetime
+            if isinstance(last_update, str):
+                try:
+                    last_update = datetime.datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                except:
+                    last_update = current_time - datetime.timedelta(days=2)  # Force update
+
+            # If we've updated within the last 24 hours, skip
+            if (current_time - last_update).total_seconds() < 24 * 60 * 60:
+                logger.info(f"Skipping spot price generation for {card.get('name')} - too recent")
+                return
+
+        # Calculate or fetch the spot price
+        # This depends on your pricing strategy - you might:
+        # 1. Query external APIs (TCGPlayer, CardKingdom, etc.)
+        # 2. Use your own algorithm based on historical data
+        # 3. Generate a price based on card attributes
+
+        price_data = calculate_card_price(card)
+
+        # Create the spot price object
+        spot_price = {
+            "timestamp": current_time,
+            "price": price_data['price'],
+            "currency": "USD",
+            "source": "auto_generated_from_bot_visit"
+        }
+
+        # Update the card with the new spot price
+        cards_collection.update_one(
+            {"_id": card["_id"]},
+            {"$set": {"spotPrice": spot_price}}
+        )
+
+        logger.info(f"Generated spot price of ${price_data['price']} for {card.get('name')}")
+
+    except Exception as e:
+        logger.error(f"Error generating spot price: {str(e)}")
+
+
 
 
 @app.route('/card/rulings/<id_value>', methods=['GET'])
@@ -807,8 +918,9 @@ def art_gallery():
         cards=cards
     )
 
-@app.route('/card/<card_id>', defaults={'card_slug': None})
+
 @app.route('/card/<card_id>/<card_slug>')
+@app.route('/card/<card_id>', defaults={'card_slug': None})
 def card_detail(card_id, card_slug):
     import time
     from pymongo import MongoClient
@@ -820,6 +932,12 @@ def card_detail(card_id, card_slug):
     from datetime import datetime
 
     start_time = time.time()
+    # Detect bot
+    is_bot = detect_bot_request(request)
+    if is_bot:
+        logger.info(f"Bot detected visiting card {card_id}, triggering spot price generation")
+        threading.Thread(target=generate_spot_price, args=(card_id,)).start()
+
 
     try:
         # Initialize MongoDB connection
