@@ -1,4 +1,3 @@
-import logging
 import json
 import logging
 import math
@@ -6,6 +5,7 @@ import os
 import threading
 import time
 import traceback
+from datetime import datetime, timezone
 
 import requests
 from bson import ObjectId, json_util
@@ -667,8 +667,8 @@ def fetch_single_card_spot_price(card_dict, db):
             return None
 
         # Use date only (strip time) for timestamp
-        # Get today's date at midnight (00:00:00)
-        today_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Get today's date
+        today_date = datetime.now(timezone.utc)
 
         # Check if we already have a spotprice for this card today
         recent_spotprice = spotprices_collection.find_one({
