@@ -611,7 +611,6 @@ def fetch_single_card_spot_price(card_dict, db):
         spotprice = {
             "card_id": card_id,
             "tcgplayer_id": tcgplayer_id_int if tcgplayer_id_int else tcgplayer_id,
-            "game_id": game_id,
             "card_name": card_name,
             "set": card_dict.get('set', None),
             "collector_number": card_dict.get('collector_number', None),
@@ -620,6 +619,8 @@ def fetch_single_card_spot_price(card_dict, db):
             "tcgplayer_prices": product_prices,
             "timestamp": today_date
         }
+        # "game_id": game_id,
+
 
         # Only save if we have any valid prices
         has_valid_scryfall_prices = any(p is not None for p in clean_scryfall_prices.values())
@@ -945,7 +946,9 @@ def asdf():
 
         logger.info(f"Found card: {card['name']}")
 
-        generate_spot_price(card['id'])
+        # generate_spot_price(card['id'])
+        fetch_single_card_spot_price(card, db)
+
         logger.info(f"Inserted spot price for {card['name']}")
         return Response('', status=200)
 
