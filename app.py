@@ -1069,5 +1069,18 @@ Crawl-delay: 10
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=2357)
+    # Get the PORT from environment variable, or use default for local development
+    port = int(os.environ.get("PORT", 5000))
+
+    # In production, bind to 0.0.0.0 to accept connections from any source
+    # In development, you might want to use 127.0.0.1 (localhost)
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+
+    print(f"Starting application on {host}:{port}")
+
+    # Set debug mode only in development
+    debug = os.environ.get("PORT") is None
+
+    app.run(host=host, port=port, debug=debug)
+
 
