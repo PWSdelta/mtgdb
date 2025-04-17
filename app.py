@@ -106,7 +106,6 @@ def convert_mongo_doc(doc):
 
     return doc
 
-
 def fetch_random_card_from_db():
     try:
         # Initialize MongoDB connection
@@ -147,71 +146,6 @@ def fetch_random_card_from_db():
         if 'client' in locals():
             client.close()
 
-
-def generate_sitemap_files():
-    """Generate static sitemap files"""
-    base_url = "https://pwsdelta.com"  # Replace with your actual domain
-    output_dir = "static/sitemaps"  # Directory to store sitemap files
-
-    # Create directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Get total URLs count (replace with your actual query)
-    total_cards = session.query(func.count(CardDetails.id)).scalar()
-
-    # URLs per sitemap (reduced from 50000)
-    urls_per_sitemap = 10000
-    num_sitemaps = math.ceil(total_cards / urls_per_sitemap)
-
-    # Generate sitemap index
-    with open(f"{output_dir}/sitemap.xml", "w") as index_file:
-        index_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        index_file.write('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-
-        for i in range(num_sitemaps):
-            index_file.write('  <sitemap>\n')
-            index_file.write(f'    <loc>{base_url}/static/sitemaps/sitemap-{i + 1}.xml</loc>\n')
-            index_file.write(f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n')
-            index_file.write('  </sitemap>\n')
-
-        index_file.write('</sitemapindex>')
-
-    # Generate individual sitemap files
-    for sitemap_id in range(1, num_sitemaps + 1):
-        print(f"Generating sitemap {sitemap_id}/{num_sitemaps}")
-
-        with open(f"{output_dir}/sitemap-{sitemap_id}.xml", "w") as sitemap_file:
-            sitemap_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-            sitemap_file.write('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
-
-            offset = (sitemap_id - 1) * urls_per_sitemap
-
-            # Replace with your actual database query
-            # Fetch URLs in batches to avoid memory issues
-            batch_size = 1000
-            for batch_offset in range(0, urls_per_sitemap, batch_size):
-                # Query to get the actual card IDs
-                cards = session.query(CardDetails.id).order_by(CardDetails.id).offset(offset + batch_offset).limit(
-                    batch_size).all()
-
-                # No cards left in this batch
-                if not cards:
-                    break
-
-                # Use the actual card IDs from the database
-                for card in cards:
-                    # Get the ID value from the database query result
-                    card_id = card.id if hasattr(card, 'id') else card[0]
-
-                    # Use the actual card ID in the URL
-                    url_path = f"card/{card_id}/{ card.name.lower().replace(' ', '-') }"
-
-                    sitemap_file.write('  <url>\n')
-                    sitemap_file.write(f'    <loc>{base_url}/{url_path}</loc>\n')
-                    sitemap_file.write(f'    <lastmod>{datetime.now().strftime("%Y-%m-%d")}</lastmod>\n')
-                    sitemap_file.write('  </url>\n')
-
-            sitemap_file.write('</urlset>')
 
 
 @app.template_filter('generate_slug')
@@ -1089,9 +1023,7 @@ def card_detail(card_id, card_slug):
 
 @app.route('/')
 def index():
-    client = None
     try:
-        # Initialize MongoDB connection with a timeout
         client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
@@ -1154,8 +1086,30 @@ def index():
 #
 #     return 404
 
-# @app.route('/asdf', methods=['GET'])
-# def asdf():
+@app.route('/asdf', methods=['GET', 'HEAD'])
+def asdf():
+    try:
+        client = MongoClient(os.getenv("MONGO_URI"))
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
+        card = fetch_random_card_from_db()
+
+        generate_spot_price(card.id)
+        return 200
+
+    except Exception as e:
+        import traceback
+        print(f"Error in index route: {e}")
+        print(traceback.format_exc())
+        return f"An error occurred: {e}", 500
+    finally:
+        if client:
+            client.close()
+
+
+
+
+
 
 
 # @app.route('/asdf')
