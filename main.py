@@ -33,7 +33,23 @@ app = Flask(__name__)
 logger = logging.getLogger(__name__)
 CORS(app)
 
-client = MongoClient(os.getenv("MONGO_URI"))
+import os
+from pymongo import MongoClient
+
+# Get the MongoDB URI from the environment variable
+mongodb_uri = os.environ.get("MONGODB_URI")
+
+if mongodb_uri:
+    client = MongoClient(mongodb_uri)
+else:
+    # Fallback to a default URI or handle the error appropriately
+    print("MONGODB_URI environment variable not set.  Using a default or exiting.")
+    # Consider raising an exception or exiting if the URI is essential
+    client = MongoClient("mongodb://localhost:27017/")  # Replace with a suitable default
+
+db = client.get_database("mtgdbmongo")  # Replace your_database_name if needed
+cards_collection = db.get_collection("cards")
+
 db = client['mtgdbmongo']
 collection = db['cards']
 

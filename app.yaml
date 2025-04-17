@@ -1,17 +1,5 @@
-runtime: python310
-entrypoint: gunicorn -b :$PORT --timeout=120 main:app
-
-handlers:
-- url: /.*
-  script: auto
-
-# Health check configuration
-health_check:
-  enable_health_check: True
-  check_interval_sec: 5
-  timeout_sec: 4
-  unhealthy_threshold: 2
-  healthy_threshold: 2
+runtime: python310  # Or whichever Python version you're using
+entrypoint: gunicorn -b :8080 main:app
 
 env_variables:
     MONGODB_URI: "mongodb+srv://pwsdelta_user:asdfghjkl@cluster0.8uviyvr.mongodb.net/mtgdbmongo?retryWrites=true&w=majority&appName=Cluster0"
