@@ -29,13 +29,13 @@
           <a href="/card/{{ card.id }}/{{ card.name | generate_slug }}" type="button" class="btn btn-sm btn-primary">
             <i class="bi bi-infinity"></i> More Info
           </a>
-          <a href="https://tcgplayer.com/product/{{ card.tcgplayer_id}}" target="_blank" type="button" class="btn btn-sm btn-info">
+          <a href="https://tcgplayer.com/product/{{ card.tcgplayer_id}}?Language=English&Condition=Lightly+Played|Near+Mint&page=1" target="_blank" type="button" class="btn btn-sm btn-info">
               <i class="bi bi-cart4"></i> Buy Now
           </a>
         </div>
 
 {#         <div>#}
-{#            <small class="text-muted">Delta Price: ${{ card.normal_price | round(2) if card.normal_price is not none and card.normal_price is float else '--' }}#}
+{#            <small class="text-muted">Delta Price: ${{ card.deltaPrice | round(2) }} #}
 {#            </small>#}
 {#         </div>#}
       </div>

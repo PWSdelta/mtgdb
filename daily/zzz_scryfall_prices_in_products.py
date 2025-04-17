@@ -132,8 +132,8 @@ if not cards_df.empty and not products_df.empty:
 
                 updated_products.add(product_id)
 
-                # If we've accumulated 7013 updates, execute them as a batch
-                if len(bulk_updates) >= 7013:
+                # If we've accumulated 8013 updates, execute them as a batch
+                if len(bulk_updates) >= 8013:
                     result = db.products.bulk_write(bulk_updates)
                     total_updates += result.modified_count
                     print(f"  Processed {len(bulk_updates)} updates...")
