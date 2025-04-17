@@ -1,5 +1,5 @@
-runtime: python310  # Or your Python version (3.7, 3.8, etc.)
-entrypoint: gunicorn -b :$PORT main:app
+runtime: python310
+entrypoint: gunicorn -b :$PORT --timeout=120 main:app
 
 handlers:
 - url: /.*

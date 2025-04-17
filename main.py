@@ -13,6 +13,9 @@ from flask import Flask, jsonify, request
 from flask import render_template, Response
 from flask_cors import CORS
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -883,7 +886,7 @@ def health_check():
     return Response('ok', status=200, mimetype='text/plain')
 
 @app.route('/health', methods=['GET'])
-def health_check():
+def get_healthy():
     return Response('ok', status=200, mimetype='text/plain')
 
 
@@ -911,8 +914,11 @@ def asdf():
         if client:
             client.close()
 
-
-if __name__ == '__main__':
-    app.run()
-
+#
+# if __name__ == '__main__':
+#     port = int(os.getenv('PORT', 8080))
+#     # For Flask, ensure you're using:
+#     app.run(host='0.0.0.0', port=port)
+#
+#
 
