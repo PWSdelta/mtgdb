@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import threading
 import time
 import traceback
@@ -870,8 +871,11 @@ def index():
                 }
             }
 
+        sort_field = random.choice(["_id", "name", "id"])
+        sort_direction = random.choice([1, -1])
+
         random_cards = list(cards_collection.find(
-            {},
+            {"tcgplayer_id": {"$ne": None}},
             {
                 "_id": 1,
                 "id": 1,
@@ -883,9 +887,9 @@ def index():
                 "set_name": 1,
                 "tcgplayer_id": 1,
                 "normal_price": 1,
-                "image_uris": 1  # Get the whole image_uris object
+                "image_uris": 1
             }
-        ).hint("$natural").limit(67))
+        ).sort([(sort_field, sort_direction)]).limit(67))
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
