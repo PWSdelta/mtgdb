@@ -1,12 +1,11 @@
+import logging
 import json
 import logging
 import math
 import os
-import random
 import threading
 import time
 import traceback
-from datetime import datetime, timedelta
 
 import requests
 from bson import ObjectId, json_util
@@ -16,7 +15,6 @@ from flask_caching import Cache
 from flask_cors import CORS
 from flask_sitemap import Sitemap
 from pymongo import MongoClient
-
 
 # Configure logging
 logging.basicConfig(
@@ -922,15 +920,6 @@ def art_gallery():
 @app.route('/card/<card_id>/<card_slug>')
 @app.route('/card/<card_id>', defaults={'card_slug': None})
 def card_detail(card_id, card_slug):
-    import time
-    from pymongo import MongoClient
-    from bson.objectid import ObjectId
-    import json
-    from bson import json_util
-    import traceback
-    import requests
-    from datetime import datetime
-
     start_time = time.time()
     # Detect bot
     is_bot = detect_bot_request(request)
