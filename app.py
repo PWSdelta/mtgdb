@@ -1089,13 +1089,20 @@ def index():
 @app.route('/asdf', methods=['GET', 'HEAD'])
 def asdf():
     try:
+        logger.info("Health check from Render")
         client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
+        logger.info(f"Connected to Mongo")
+
         card = fetch_random_card_from_db()
+        if not card:
+            return f"Didn't fetch the card: {e}", 500
+
+        logger.info(f"Card: {card}")
 
         generate_spot_price(card['id'])
-        return 200
+        return Response("{'message':'healthy'}", status=200, mimetype='application/json')
 
     except Exception as e:
         import traceback
