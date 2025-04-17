@@ -7,6 +7,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+import numpy as np
 import requests
 from bson import ObjectId, json_util
 from flask import Flask, jsonify, request
@@ -417,37 +418,13 @@ def generate_spot_price(card_id):
                 logger.info(f"Skipping spot price generation for {card.get('name')} - too recent")
                 return
 
-        # Calculate or fetch the spot price
-        # This depends on your pricing strategy - you might:
-        # 1. Query external APIs (TCGPlayer, CardKingdom, etc.)
-        # 2. Use your own algorithm based on historical data
-        # 3. Generate a price based on card attributes
-
-        price_data = calculate_card_price(card)
-
-        # Create the spot price object
-        spot_price = {
-            "timestamp": current_time,
-            "price": price_data['price'],
-            "currency": "USD",
-            "source": "auto_generated_from_bot_visit"
-        }
-
-        # Update the card with the new spot price
-        cards_collection.update_one(
-            {"_id": card["_id"]},
-            {"$set": {"spotPrice": spot_price}}
-        )
-
-        logger.info(f"Generated spot price of ${price_data['price']} for {card.get('name')}")
-
     except Exception as e:
         logger.error(f"Error generating spot price: {str(e)}")
 
 
 
 
-@app.route('/card/rulings/<id_value>', methods=['GET'])
+# @app.route('/card/rulings/<id_value>', methods=['GET'])
 def get_card_rulings(id_value):
     """
     Get rulings for a card by either its Scryfall ID or TCGPlayer ID
