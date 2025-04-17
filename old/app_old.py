@@ -27,24 +27,12 @@ app = Flask(__name__)
 
 
 # Determine environment
-ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
 logger = logging.getLogger(__name__)
 CORS(app)
 
-
-
-# Connect to MongoDB running on localhost with default port 27017
-# client = MongoClient(os.getenv("MONGO_URI"))
 client = MongoClient(os.getenv("MONGO_URI"))
-
-# Access a database
-db = client['mtgdbmongo']  # Replace with your actual database name
-
-# Access a collection
-collection = db['cards']  # Replace with your actual collection name
-
-
-
+db = client['mtgdbmongo']
+collection = db['cards']
 
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
@@ -815,12 +803,6 @@ def card_detail(card_id, card_slug):
 
         # Get price history for this card
         price_history = None
-        # if 'id' in card_dict:
-        #     # Get the last 30 days of price history
-        #     price_history = list(spotprices_collection.find(
-        #         {"card_id": card_dict['id']}
-        #     ).sort("timestamp", -1).limit(30))
-        #     price_history = json.loads(json_util.dumps(price_history))
 
         # If card_slug is None or doesn't match expected slug, redirect to the proper URL
         if card_slug is None and 'name' in card_dict and card_dict['name']:
@@ -835,8 +817,6 @@ def card_detail(card_id, card_slug):
             card=card_dict,
             other_printings=other_printings,
             cards_by_artist=cards_by_artist
-            # current_price=spot_price,
-            # price_history=price_history
         )
 
     except Exception as e:
