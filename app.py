@@ -663,7 +663,7 @@ def art_gallery():
 @app.route('/card/<card_id>', defaults={'card_slug': None})
 def card_detail(card_id, card_slug):
     start_time = time.time()
-    # Detect bot
+
     is_bot = detect_bot_request(request)
     if is_bot:
         logger.info(f"Bot detected visiting card {card_id}, triggering spot price generation")
@@ -811,16 +811,16 @@ def card_detail(card_id, card_slug):
         logger.info(f"Card found: {card_dict.get('name', 'Unknown')}")
 
         # Fetch and create spot price record for this card
-        spot_price = fetch_single_card_spot_price(card_dict, db)
+        # spot_price = fetch_single_card_spot_price(card_dict, db)
 
         # Get price history for this card
         price_history = None
-        if 'id' in card_dict:
-            # Get the last 30 days of price history
-            price_history = list(spotprices_collection.find(
-                {"card_id": card_dict['id']}
-            ).sort("timestamp", -1).limit(30))
-            price_history = json.loads(json_util.dumps(price_history))
+        # if 'id' in card_dict:
+        #     # Get the last 30 days of price history
+        #     price_history = list(spotprices_collection.find(
+        #         {"card_id": card_dict['id']}
+        #     ).sort("timestamp", -1).limit(30))
+        #     price_history = json.loads(json_util.dumps(price_history))
 
         # If card_slug is None or doesn't match expected slug, redirect to the proper URL
         if card_slug is None and 'name' in card_dict and card_dict['name']:
@@ -834,9 +834,9 @@ def card_detail(card_id, card_slug):
             'card_detail.html',
             card=card_dict,
             other_printings=other_printings,
-            cards_by_artist=cards_by_artist,
-            current_price=spot_price,
-            price_history=price_history
+            cards_by_artist=cards_by_artist
+            # current_price=spot_price,
+            # price_history=price_history
         )
 
     except Exception as e:
