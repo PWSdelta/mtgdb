@@ -242,11 +242,9 @@
 <p class="text-center">Love this artist's work? Discover every card illustrated by {{ card.artist }} in our collection. Browse their full Magic portfolio with super-sized art that shows off all the details.</p>
 
     <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-    {% cache 600, 'artist_cards', card.artist %}
-        {% for card in cards_by_artist %}
-          {% include "_card_component.html" %}
-        {% endfor %}
-    {% endcache %}
+    {% for card in cards_by_artist %}
+      {% include "_card_component.html" %}
+    {% endfor %}
     </div>
 </div>
 {% endif %}

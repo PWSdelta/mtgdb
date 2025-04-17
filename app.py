@@ -1,18 +1,15 @@
 import json
 import logging
-import math
 import os
 import threading
 import time
 import traceback
 from datetime import datetime, timezone
 
-import numpy as np
 import requests
 from bson import ObjectId, json_util
 from flask import Flask, jsonify, request
 from flask import render_template, Response
-from flask_caching import Cache
 from flask_cors import CORS
 from pymongo import MongoClient
 
@@ -51,22 +48,6 @@ collection = db['cards']  # Replace with your actual collection name
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
 
-
-# Configure cache based on environment
-if ENVIRONMENT == 'development':
-    cache_config = {
-        'CACHE_TYPE': 'SimpleCache',
-        'CACHE_DEFAULT_TIMEOUT': 300
-    }
-
-# Initialize cache
-cache = Cache(app, config=cache_config)
-
-
-
-# Add the extension from flask_caching
-app.jinja_env.add_extension('jinja2.ext.loopcontrols')
-app.jinja_env.add_extension('jinja2.ext.do')
 
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -890,7 +871,7 @@ def index():
             }
 
         random_cards = list(cards_collection.find(
-            {"tcgplayer_id": {"$ne": None}},
+            {},
             {
                 "_id": 1,
                 "id": 1,
@@ -904,7 +885,7 @@ def index():
                 "normal_price": 1,
                 "image_uris": 1  # Get the whole image_uris object
             }
-        ).limit(67))
+        ).hint("$natural").limit(67))
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
@@ -950,7 +931,7 @@ def asdf():
         fetch_single_card_spot_price(card, db)
 
         logger.info(f"Inserted spot price for {card['name']}")
-        return Response('', status=200)
+        return Response('Thumbs up!', status=200, mimetype='text/plain')
 
     except Exception as e:
         import traceback
