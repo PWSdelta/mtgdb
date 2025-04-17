@@ -878,8 +878,11 @@ def index():
         if client:
             client.close()
 
-
 @app.route('/asdfasdf', methods=['GET', 'HEAD'])
+def health_check():
+    return Response('ok', status=200, mimetype='text/plain')
+
+@app.route('/asdf', methods=['GET', 'HEAD'])
 def asdf():
     try:
         client = MongoClient(os.getenv("MONGO_URI"))

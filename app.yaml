@@ -1,5 +1,5 @@
 runtime: python310
-entrypoint: gunicorn --timeout=30 --bind 0.0.0.0:$PORT main:app
+entrypoint: gunicorn main:app
 
 
 
