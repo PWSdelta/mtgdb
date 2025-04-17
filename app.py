@@ -871,7 +871,7 @@ def index():
                 }
             }
 
-        random_cmc = random.randint(0, 20)
+        random_cmc = random.randint(0, 6)
         random_cards = list(cards_collection.find(
             {
                 "tcgplayer_id": {"$ne": None},
@@ -884,7 +884,7 @@ def index():
                 "oracle_text": 1, "printed_text": 1, "flavor_text": 1,
                 "set_name": 1, "tcgplayer_id": 1, "normal_price": 1, "image_uris": 1
             }
-        ).limit(67))
+        ).limit(33))
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
@@ -921,151 +921,6 @@ def asdf():
     finally:
         if client:
             client.close()
-
-
-@app.route('/sitemap.xml')
-def sitemap_index():
-    """
-    Serves the static sitemap index file.
-    """
-    return app.send_static_file('sitemap.xml')
-
-
-@app.route('/sitemaps/<filename>')
-def serve_sitemap(filename):
-    """
-    Serves individual sitemap files from the static/sitemaps directory.
-    """
-    return app.send_static_file(os.path.join('sitemaps', filename))
-
-
-@app.route('/robots.txt')
-def robots():
-    return Response("""
-User-agent: *
-Allow: /
-Sitemap: https://pwsdelta.com/sitemap.xml
-
-# Block specific bots
-# SEO & Analytics Bots
-User-agent: AhrefsBot
-Disallow: /
-
-User-agent: SemrushBot
-Disallow: /
-
-User-agent: MJ12bot
-Disallow: /
-
-User-agent: DotBot
-Disallow: /
-
-User-agent: DataForSeoBot
-Disallow: /
-
-User-agent: BLEXBot
-Disallow: /
-
-
-# Search Engine Bots (consider carefully)
-User-agent: Baiduspider
-Disallow: /
-
-User-agent: YandexBot
-Disallow: /
-
-User-agent: YandexImages
-Disallow: /
-
-User-agent: PetalBot
-Disallow: /
-
-User-agent: SeznamBot
-Disallow: /
-
-User-agent: Mail.RU_Bot
-Disallow: /
-
-
-# Social Media & Scraper Bots
-User-agent: FacebookBot
-Disallow: /
-
-User-agent: LinkedInBot
-Disallow: /
-
-User-agent: TelegramBot
-Disallow: /
-
-User-agent: TwitterBot
-Disallow: /
-
-User-agent: Pinterestbot
-Disallow: /
-
-User-agent: WhatsApp
-Disallow: /
-
-
-# Archive Bots
-User-agent: ia_archiver
-Disallow: /
-
-User-agent: archive.org_bot
-Disallow: /
-
-# Aggressive Crawler Bots
-User-agent: 360Spider
-Disallow: /
-
-User-agent: AspiegelBot
-Disallow: /
-
-User-agent: ZoominfoBot
-Disallow: /
-
-User-agent: CCBot
-Disallow: /
-
-User-agent: SentiBot
-Disallow: /
-
-User-agent: SerendeputyBot
-Disallow: /
-
-# AI & ML Training Bots
-User-agent: GPTBot
-Disallow: /
-
-User-agent: ChatGPT-User
-Disallow: /
-
-User-agent: Google-Extended
-Disallow: /
-
-User-agent: anthropic-ai
-Disallow: /
-
-User-agent: Omgilibot
-Disallow: /
-
-User-agent: FacebookBot
-Disallow: /
-
-User-agent: Claude-Web
-Disallow: /
-
-# Block all bots from specific paths
-User-agent: *
-Disallow: /admin/
-Disallow: /private/
-Disallow: /api/
-Disallow: /internal/
-
-# Rate limiting hint (not officially supported but followed by some bots)
-Crawl-delay: 10
-""", mimetype='text/plain')
-
 
 
 if __name__ == '__main__':
