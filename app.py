@@ -1102,7 +1102,7 @@ def asdf():
         logger.info(f"Card: {card}")
 
         generate_spot_price(card['id'])
-        return Response("{'message':'healthy'}", status=200, mimetype='application/json')
+        return render_template('health.html', card=card)
 
     except Exception as e:
         import traceback
