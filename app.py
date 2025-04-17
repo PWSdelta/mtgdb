@@ -591,10 +591,10 @@ def fetch_single_card_spot_price(card_dict, db):
 
         # Create spotprice document using today's date without time
         spotprice = {
-            "card_id": card_id,
+            "card_id": "1",
             "tcgplayer_id": tcgplayer_id_int if tcgplayer_id_int else tcgplayer_id,
             "card_name": card_name,
-            "set": card_dict.get('set', None),
+            "set": card_dict.get('set_name', None),
             "collector_number": card_dict.get('collector_number', None),
             "rarity": card_dict.get('rarity', None),
             "scryfall_prices": clean_scryfall_prices,
@@ -871,25 +871,20 @@ def index():
                 }
             }
 
-        sort_field = random.choice(["_id", "name", "id"])
-        sort_direction = random.choice([1, -1])
-
+        random_cmc = random.randint(0, 20)
         random_cards = list(cards_collection.find(
-            {"tcgplayer_id": {"$ne": None}},
             {
-                "_id": 1,
-                "id": 1,
-                "name": 1,
-                "artist": 1,
-                "oracle_text": 1,
-                "printed_text": 1,
-                "flavor_text": 1,
-                "set_name": 1,
-                "tcgplayer_id": 1,
-                "normal_price": 1,
-                "image_uris": 1
+                "tcgplayer_id": {"$ne": None},
+                "lang": "en",
+                "games": "paper",
+                "cmc": {"$lt": random_cmc}
+            },
+            {
+                "_id": 1, "id": 1, "name": 1, "artist": 1,
+                "oracle_text": 1, "printed_text": 1, "flavor_text": 1,
+                "set_name": 1, "tcgplayer_id": 1, "normal_price": 1, "image_uris": 1
             }
-        ).sort([(sort_field, sort_direction)]).limit(67))
+        ).limit(67))
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
@@ -903,20 +898,6 @@ def index():
         if client:
             client.close()
 
-
-# @app.route('/wp-admin/setup-config.php', methods=['GET', 'POST'])
-# def fake_wordpress_setup():
-#     # Log the attempt
-#     ip_address = request.remote_addr
-#     user_agent = request.headers.get('User-Agent', 'Unknown')
-#
-#     print(f"WordPress probe attempt detected from IP: {ip_address}, User-Agent: {user_agent}")
-#
-#     # Optional: Log to database or file
-#     with open('intrusion_attempts.log', 'a') as f:
-#         f.write(f"{datetime.now()}, {ip_address}, {user_agent}, wp-admin/setup-config.php\n")
-#
-#     return 404
 
 @app.route('/asdfasdf', methods=['GET', 'HEAD'])
 def asdf():
@@ -940,11 +921,6 @@ def asdf():
     finally:
         if client:
             client.close()
-
-
-
-
-
 
 
 @app.route('/sitemap.xml')
