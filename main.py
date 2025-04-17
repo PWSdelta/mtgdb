@@ -878,9 +878,15 @@ def index():
         if client:
             client.close()
 
-@app.route('/asdfasdf', methods=['GET', 'HEAD'])
+@app.route('/_ah/health', methods=['HEAD', 'GET'])
 def health_check():
     return Response('ok', status=200, mimetype='text/plain')
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return Response('ok', status=200, mimetype='text/plain')
+
+
 
 @app.route('/asdf', methods=['GET', 'HEAD'])
 def asdf():
