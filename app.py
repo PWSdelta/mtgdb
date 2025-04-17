@@ -14,7 +14,6 @@ from flask import Flask, jsonify, request
 from flask import render_template, Response
 from flask_caching import Cache
 from flask_cors import CORS
-from flask_sitemap import Sitemap
 from pymongo import MongoClient
 
 # Configure logging
