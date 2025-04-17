@@ -4,18 +4,12 @@ import pymongo
 import re
 from datetime import datetime
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Start timing
 start_time = time.time()
-
-# MongoDB connection with optimized settings
-# client = pymongo.MongoClient(
-#     "mongodb://localhost:27017/",
-#     maxPoolSize=50,  # Increase connection pool
-#     socketTimeoutMS=30000,  # Increase timeout
-#     w=1,  # Reduce write concern for speed
-#     journal=False  # Disable journaling for speed
-# )
 
 client = pymongo.MongoClient(
     os.getenv('MONGO_URI'),

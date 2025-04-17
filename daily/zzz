@@ -2,3 +2,4 @@ python.exe 1_get_product_csvs.py;
 python.exe 2_csv_to_mongo_importer.py;
 python.exe 3_delta_price_calculator.py
 
+; MONGO_URI=mongodb://localhost:27017/products
