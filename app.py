@@ -917,20 +917,15 @@ def index():
 @app.route('/asdfasdf', methods=['GET', 'HEAD'])
 def asdf():
     try:
-        logger.info("Health check from Render")
         client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
-        logger.info(f"Connected to Mongo!")
-
         card = fetch_random_card_from_db()
 
         logger.info(f"Found card: {card['name']}")
-
-        # generate_spot_price(card['id'])
         fetch_single_card_spot_price(card, db)
-
         logger.info(f"Inserted spot price for {card['name']}")
+
         return Response('Thumbs up!', status=200, mimetype='text/plain')
 
     except Exception as e:
