@@ -882,19 +882,23 @@ def index():
             }
 
         random_cmc = random.randint(0, 6)
-        random_cards = list(cards_collection.find(
-            {
+        random_cards = list(cards_collection.aggregate([
+            # Match stage (equivalent to your find filter)
+            {'$match': {
                 "tcgplayer_id": {"$ne": None},
                 "lang": "en",
                 "games": "paper",
                 "cmc": {"$lt": random_cmc}
-            },
-            {
+            }},
+            # Sample stage
+            {'$sample': {'size': 167}},
+            # Project stage (equivalent to your projection)
+            {'$project': {
                 "_id": 1, "id": 1, "name": 1, "artist": 1,
                 "oracle_text": 1, "printed_text": 1, "flavor_text": 1,
                 "set_name": 1, "tcgplayer_id": 1, "normal_price": 1, "image_uris": 1
-            }
-        ).limit(33))
+            }}
+        ]))
 
         return render_template('home.html', hero_card=hero_card, random_cards=random_cards)
 
