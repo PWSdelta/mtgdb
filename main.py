@@ -654,7 +654,7 @@ def art_gallery():
             'image_uris.art_crop': {'$exists': True},
             'highres_image': True
         }},
-        {'$sample': {'size': 10}},
+        {'$sample': {'size': 373}},
         {'$project': {
             '_id': 0,
             'name': 1,
