@@ -1,20 +1,21 @@
 import json
 import logging
+import os
 import random
 import threading
 import time
 import traceback
 from datetime import datetime, timedelta
-import os
-from pymongo import MongoClient
 
 import requests
 from bson import ObjectId, json_util
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
-from flask import render_template, Response
+from flask import Flask, render_template
+from flask import Response
+from flask import jsonify, request
 from flask_caching import Cache
 from flask_cors import CORS
+from pymongo import MongoClient
 
 load_dotenv()
 
@@ -31,14 +32,15 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Configure cache
+# Configure Flask-Caching
+# Make sure cache config comes before route definitions
 cache_config = {
-    "DEBUG": True,  # Some Flask specific configs
-    "CACHE_TYPE": "SimpleCache",  # Flask-Caching related configs
-    "CACHE_DEFAULT_TIMEOUT": 21600  # 6 hours default (in seconds)
+    'CACHE_TYPE': 'simple',
+    'CACHE_DEFAULT_TIMEOUT': 3600
 }
-app.config.from_mapping(cache_config)
-cache = Cache(app)
+cache = Cache()
+cache.init_app(app, config=cache_config)  # Separate initialization
+
 
 
 
@@ -659,6 +661,7 @@ def extract_foil_price(api_data):
 
 
 @app.route('/artists/<artist_name>')
+@cache.cached(timeout=300)
 def get_cards_by_artist(artist_name):
     # Initialize MongoDB connection
     client = MongoClient(os.getenv("MONGO_URI"))
@@ -674,6 +677,7 @@ def get_cards_by_artist(artist_name):
 
 
 @app.route('/gallery')
+@cache.cached(timeout=300)
 def art_gallery():
     cards = list(collection.aggregate([
         {'$match': {
@@ -702,6 +706,7 @@ def art_gallery():
 
 @app.route('/card/<card_id>/<card_slug>')
 @app.route('/card/<card_id>', defaults={'card_slug': None})
+@cache.cached(timeout=300)
 def card_detail(card_id, card_slug):
     start_time = time.time()
 
@@ -883,6 +888,7 @@ def card_detail(card_id, card_slug):
 
 
 @app.route('/')
+@cache.cached(timeout=300)
 def index():
     try:
         client = MongoClient(os.getenv("MONGO_URI"))
