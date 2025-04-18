@@ -906,8 +906,8 @@ def get_healthy():
 
 
 
-@app.route('/asdf', methods=['GET', 'HEAD'])
-def asdf():
+@app.route('/asdfasdf', methods=['GET', 'HEAD'])
+def asdfasdf():
     try:
         client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
