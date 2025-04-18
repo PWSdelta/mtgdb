@@ -890,17 +890,10 @@ def index():
         cards_collection = db['cards']
 
         hero_card = fetch_random_card_from_db()
-        generate_spot_price(hero_card['id'])
 
-        # Safety check for hero_card
-        if not hero_card:
-            hero_card = {
-                "id": "default",
-                "name": "Magic Card",
-                "image_uris": {
-                    "normal": "/static/images/card-back.jpg"
-                }
-            }
+        thread = threading.Thread(target=generate_spot_price, args=(hero_card['id'],))
+        thread.daemon = False  # Ensure thread isn't a daemon
+        thread.start()
 
         random_cmc = random.randint(0, 6)
         random_cards = list(cards_collection.aggregate([
