@@ -1012,7 +1012,7 @@ def process_batch():
             logger.info(f"[Batch-{batch_id}] MongoDB connection closed")
 
 
-def continuous_price_updater():
+def continuous_price_updater(mongo_uri):
     """
     Background thread that continuously updates spot prices in small batches
     with controlled delays between batches.
@@ -1020,18 +1020,17 @@ def continuous_price_updater():
     logger.info("Starting continuous price updater background thread")
 
     while True:
+        client = None
         try:
             batch_size = 20  # Process 20 cards at a time
             min_delay = 60  # Minimum delay in seconds between batches
 
             # Get database connection
-            from pymongo import MongoClient
-            client = MongoClient(current_app.config['MONGO_URI'])
+            client = MongoClient(mongo_uri)
             db = client['mtgdbmongo']
             cards_collection = db['cards']
 
             # Calculate the timestamp for cards to process
-            # Prioritize cards that haven't been updated in the longest time
             twelve_hours_ago = datetime.now() - timedelta(hours=12)
 
             # Find cards to process
@@ -1073,6 +1072,7 @@ def continuous_price_updater():
 
                 try:
                     # Generate spot price for this card
+                    from main import generate_spot_price  # Import locally to avoid circular imports
                     success = generate_spot_price(card_id)
 
                     if success:
@@ -1100,7 +1100,6 @@ def continuous_price_updater():
             logger.info(f"Batch completed: {processed_count} processed, {spot_prices_created} spot prices created")
 
             # Calculate how long to wait before the next batch
-            # Ensure we wait at least min_delay seconds between batches
             wait_time = max(min_delay - batch_processing_time, 0)
             if wait_time > 0:
                 logger.info(f"Waiting {wait_time:.1f} seconds before next batch")
@@ -1112,7 +1111,7 @@ def continuous_price_updater():
             time.sleep(300)  # 5 minutes
         finally:
             # Close MongoDB connection
-            if 'client' in locals() and client:
+            if client:
                 client.close()
 
 
