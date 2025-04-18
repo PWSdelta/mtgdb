@@ -3,11 +3,8 @@ import logging
 import os
 import random
 import threading
-import time
-import traceback
 from datetime import datetime, timedelta
 
-import requests
 from bson import ObjectId, json_util
 from dotenv import load_dotenv
 from flask import Flask, render_template
@@ -906,28 +903,225 @@ def get_healthy():
 
 
 
-@app.route('/asdfasdf', methods=['GET', 'HEAD'])
-def asdfasdf():
+@app.route('/process_batch', methods=['GET'])
+def process_batch():
+    start_time = datetime.now()
+    batch_id = start_time.strftime("%Y%m%d%H%M%S")
+
+    start_continuous_updater()
+
     try:
+        logger.info(f"[Batch-{batch_id}] Starting spot price batch processing")
+
         client = MongoClient(os.getenv("MONGO_URI"))
         db = client['mtgdbmongo']
         cards_collection = db['cards']
-        card = fetch_random_card_from_db()
 
-        fetch_single_card_spot_price(db)
+        # Calculate the timestamp for 13 hours ago
+        thirteen_hours_ago = datetime.now() - timedelta(hours=13)
+        logger.info(f"[Batch-{batch_id}] Looking for cards not updated since {thirteen_hours_ago.isoformat()}")
 
-        logger.info(f"Inserted spot price for {card['name']}")
+        # Build the aggregation pipeline to find cards not recently updated
+        pipeline = [
+            {"$match": {
+                "$or": [
+                    {"spot_price_updated": {"$exists": False}},
+                    {"spot_price_updated": {"$lt": thirteen_hours_ago}}
+                ],
+                # Make sure we have the Scryfall ID which is required for generate_spot_price
+                "id": {"$exists": True},
+                # Only process English cards as per the generate_spot_price logic
+                "lang": "en"
+            }},
+            {"$sample": {"size": 100}}
+        ]
 
-        return Response('ok', status=200, mimetype='text/plain')
+        # Execute the aggregation
+        random_cards = list(cards_collection.aggregate(pipeline))
+
+        logger.info(f"[Batch-{batch_id}] Selected {len(random_cards)} cards for spot price update")
+
+        # Process each card
+        processed_count = 0
+        spot_prices_created = 0
+        errors_count = 0
+        skipped_count = 0
+
+        for i, card in enumerate(random_cards, 1):
+            card_id = card.get("id")  # This is the Scryfall ID
+            card_name = card.get('name', 'unknown')
+            card_set = card.get('set', 'unknown')
+            card_number = card.get('collector_number', 'unknown')
+
+            if not card_id:
+                logger.warning(f"[Batch-{batch_id}] Card missing Scryfall ID: {card_name} - skipping")
+                skipped_count += 1
+                continue
+
+            logger.info(
+                f"[Batch-{batch_id}] [{i}/{len(random_cards)}] Processing {card_name} ({card_set}-{card_number})")
+
+            try:
+                # Call generate_spot_price with the Scryfall ID
+                success = generate_spot_price(card_id)
+
+                if success:
+                    spot_prices_created += 1
+                    logger.info(f"[Batch-{batch_id}] Successfully created spot price for {card_name}")
+                else:
+                    skipped_count += 1
+                    logger.warning(f"[Batch-{batch_id}] No spot price data created for {card_name}")
+
+                processed_count += 1
+
+                # Mark this card as processed regardless of success
+                cards_collection.update_one(
+                    {"_id": card["_id"]},
+                    {"$set": {"spot_price_updated": datetime.now()}}
+                )
+
+            except Exception as e:
+                errors_count += 1
+                logger.error(f"[Batch-{batch_id}] Error processing {card_name}: {str(e)}", exc_info=True)
+
+        duration = datetime.now() - start_time
+
+        # Log summary statistics
+        logger.info(f"[Batch-{batch_id}] Batch processing completed in {duration.total_seconds():.2f} seconds")
+        logger.info(
+            f"[Batch-{batch_id}] Summary: {processed_count} processed, {spot_prices_created} spot prices created, {errors_count} errors, {skipped_count} skipped")
+
+        return Response(
+            f'Spot price batch update (Batch-{batch_id}) completed:\n'
+            f'- {processed_count} cards processed\n'
+            f'- {spot_prices_created} spot prices created/updated\n'
+            f'- {errors_count} errors encountered\n'
+            f'- {skipped_count} cards skipped\n'
+            f'- {len(random_cards)} total cards selected\n'
+            f'- Time elapsed: {duration.total_seconds():.2f} seconds',
+            status=200,
+            mimetype='text/plain'
+        )
 
     except Exception as e:
-        import traceback
-        print(f"Error in index route: {e}")
-        print(traceback.format_exc())
+        logger.error(f"[Batch-{batch_id}] Critical error in batch processing: {str(e)}", exc_info=True)
         return f"An error occurred: {e}", 500
     finally:
-        if client:
+        if 'client' in locals() and client:
             client.close()
+            logger.info(f"[Batch-{batch_id}] MongoDB connection closed")
+
+
+def continuous_price_updater():
+    """
+    Background thread that continuously updates spot prices in small batches
+    with controlled delays between batches.
+    """
+    logger.info("Starting continuous price updater background thread")
+
+    while True:
+        try:
+            batch_size = 20  # Process 20 cards at a time
+            min_delay = 60  # Minimum delay in seconds between batches
+
+            # Get database connection
+            from pymongo import MongoClient
+            client = MongoClient(current_app.config['MONGO_URI'])
+            db = client['mtgdbmongo']
+            cards_collection = db['cards']
+
+            # Calculate the timestamp for cards to process
+            # Prioritize cards that haven't been updated in the longest time
+            twelve_hours_ago = datetime.now() - timedelta(hours=12)
+
+            # Find cards to process
+            pipeline = [
+                {"$match": {
+                    "$or": [
+                        {"spot_price_updated": {"$exists": False}},
+                        {"spot_price_updated": {"$lt": twelve_hours_ago}}
+                    ],
+                    "id": {"$exists": True},  # Must have Scryfall ID
+                    "lang": "en"  # English cards only
+                }},
+                {"$sort": {"spot_price_updated": 1}},  # Oldest first (or null)
+                {"$limit": batch_size}
+            ]
+
+            cards_to_process = list(cards_collection.aggregate(pipeline))
+
+            if not cards_to_process:
+                logger.info("No cards need spot price updates at this time. Sleeping for 5 minutes.")
+                time.sleep(300)  # Sleep for 5 minutes if no cards need updates
+                continue
+
+            logger.info(f"Processing batch of {len(cards_to_process)} cards")
+
+            processed_count = 0
+            spot_prices_created = 0
+
+            batch_start_time = time.time()
+
+            # Process each card in the batch
+            for card in cards_to_process:
+                card_id = card.get("id")
+                card_name = card.get('name', 'unknown')
+
+                if not card_id:
+                    logger.warning(f"Card missing Scryfall ID: {card_name} - skipping")
+                    continue
+
+                try:
+                    # Generate spot price for this card
+                    success = generate_spot_price(card_id)
+
+                    if success:
+                        spot_prices_created += 1
+                        logger.info(f"Created spot price for {card_name}")
+                    else:
+                        logger.warning(f"No spot price data created for {card_name}")
+
+                    # Mark this card as processed regardless of success
+                    cards_collection.update_one(
+                        {"_id": card["_id"]},
+                        {"$set": {"spot_price_updated": datetime.now()}}
+                    )
+
+                    processed_count += 1
+
+                    # Small delay between individual cards to avoid hammering APIs
+                    time.sleep(1)
+
+                except Exception as e:
+                    logger.error(f"Error processing {card_name}: {str(e)}", exc_info=True)
+
+            # Calculate batch processing time
+            batch_processing_time = time.time() - batch_start_time
+            logger.info(f"Batch completed: {processed_count} processed, {spot_prices_created} spot prices created")
+
+            # Calculate how long to wait before the next batch
+            # Ensure we wait at least min_delay seconds between batches
+            wait_time = max(min_delay - batch_processing_time, 0)
+            if wait_time > 0:
+                logger.info(f"Waiting {wait_time:.1f} seconds before next batch")
+                time.sleep(wait_time)
+
+        except Exception as e:
+            logger.error(f"Error in continuous price updater: {str(e)}", exc_info=True)
+            # If there's an error, wait a bit longer before retrying
+            time.sleep(300)  # 5 minutes
+        finally:
+            # Close MongoDB connection
+            if 'client' in locals() and client:
+                client.close()
+
+
+# Function to start the background thread when your application starts
+def start_continuous_updater():
+    thread = threading.Thread(target=continuous_price_updater, daemon=True)
+    thread.start()
+    logger.info("Continuous price updater thread started")
+
 
 
 
