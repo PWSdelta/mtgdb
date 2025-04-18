@@ -704,186 +704,72 @@ def art_gallery():
         cards=cards
     )
 
+
+
+# Integration with your card detail route
 @app.route('/card/<card_id>/<card_slug>')
 @app.route('/card/<card_id>', defaults={'card_slug': None})
-@cache.cached(timeout=300)
-def card_detail(card_id, card_slug):
-    start_time = time.time()
+@cache.cached(timeout=3600)  # Cache for an hour
+def card_detail(card_id, card_slug=None):
+    """Card detail page with rulings"""
 
-    logger.info(f" {card_id}: Triggering spot price generation")
+    card = cards_collection.find_one({"id": card_id})
+    if not card:
+        return render_template('error.html', message="Card not found"), 404
 
-    thread = threading.Thread(target=generate_spot_price, args=(card_id,))
+    thread = threading.Thread(target=generate_spot_price, args=(hero_card['id'],))
     thread.daemon = False  # Ensure thread isn't a daemon
     thread.start()
 
-    try:
-        # Initialize MongoDB connection
-        client = MongoClient(os.getenv("MONGO_URI"))
-        db = client['mtgdbmongo']
-        cards_collection = db['cards']
-        spotprices_collection = db['spotprices']
+    # Get rulings from the card document (or API if needed)
+    # If the card already has rulings_data, use that
+    if card.get("rulings_data") is not None:
+        rulings = card.get("rulings_data", [])
 
-        # Try different approaches to find the card
-        card = cards_collection.find_one({"id": card_id})
+        # Check if we need to refresh rulings in the background
+        last_updated = card.get("rulings_last_updated")
+        if last_updated and (datetime.now() - last_updated).days > 30:
+            # Fetch updated rulings in the background
+            from threading import Thread
+            update_thread = Thread(target=fetch_card_rulings, args=(card_id, True))
+            update_thread.daemon = True
+            update_thread.start()
+    else:
+        # No rulings yet, fetch them now
+        rulings = fetch_card_rulings(card_id)
 
-        # If that fails, try with ObjectId
-        if card is None and len(card_id) == 24 and all(c in '0123456789abcdefABCDEF' for c in card_id):
-            try:
-                card = cards_collection.find_one({"_id": ObjectId(card_id)})
-            except:
-                pass
+    # Get other printings of the same card (English only)
+    other_printings = []
+    if card.get("oracle_id"):
+        other_printings = list(cards_collection.find({
+            "oracle_id": card.get("oracle_id"),
+            "id": {"$ne": card_id},
+            "lang": "en"  # English language filter
+        }).sort("released_at", -1))
 
-        # If still not found, try by slug
-        if card is None and card_slug is not None:
-            card = cards_collection.find_one({"slug": card_slug})
+    # Get cards by the same artist (English only)
+    cards_by_artist = []
+    if card.get("artist"):
+        cards_by_artist = list(cards_collection.find({
+            "artist": card.get("artist"),
+            "id": {"$ne": card_id},
+            "lang": "en"  # English language filter
+        }).limit(12))
 
-        # If still not found, try other fields
-        if card is None:
-            potential_id_fields = ["oracle_id", "mtgo_id", "arena_id", "tcgplayer_id"]
-            for field in potential_id_fields:
-                try:
-                    card = cards_collection.find_one({field: card_id})
-                    if not card:
-                        card = cards_collection.find_one({field: int(card_id)})
-                    if card:
-                        break
-                except (ValueError, TypeError):
-                    continue
+    # Get similar cards for recommendations (English only)
+    similar_cards = list(cards_collection.find({
+        "set_name": card.get("set_name"),
+        "id": {"$ne": card_id},
+        "lang": "en"  # English language filter
+    }).limit(6))
 
-        if card is None:
-            logger.error(f"Card not found for id: {card_id} and slug: {card_slug}")
-            return "Card not found", 404
+    return render_template('card_detail.html',
+                           card=card,
+                           similar_cards=similar_cards,
+                           rulings=rulings,
+                           other_printings=other_printings,
+                           cards_by_artist=cards_by_artist)
 
-        # Process the card data to ensure all required fields exist
-        card_dict = json.loads(json_util.dumps(card))
-
-        # Ensure all nested structures exist
-        if 'image_uris' not in card_dict:
-            card_dict['image_uris'] = {
-                'normal': '/static/img/card_back.png',
-                'large': '/static/img/card_back.png',
-                'art_crop': '/static/img/card_back.png'
-            }
-
-        # Add default values for other commonly accessed fields
-        if 'normal_price' not in card_dict:
-            card_dict['normal_price'] = None
-
-        if 'mana_cost' not in card_dict:
-            card_dict['mana_cost'] = ''
-
-        # Fetch rulings from Scryfall API
-        scryfall_id = card_dict.get('id')
-        rulings_updated = False
-
-        if scryfall_id:
-            try:
-                # Check when rulings were last updated
-                last_updated = card_dict.get('rulings_last_updated')
-                current_time = datetime.utcnow()
-
-                # If rulings have never been updated or were updated more than 7 days ago, fetch them
-                if not last_updated or (current_time - last_updated).days > 7:
-                    rulings_url = f"https://api.scryfall.com/cards/{scryfall_id}/rulings"
-                    response = requests.get(rulings_url)
-
-                    if response.status_code == 200:
-                        rulings_data = response.json()
-
-                        # Update the card with new rulings
-                        if 'data' in rulings_data and isinstance(rulings_data['data'], list):
-                            # Update both the card_dict for current use and the database
-                            card_dict['rulings'] = rulings_data['data']
-                            card_dict['rulingsData'] = rulings_data
-                            card_dict['rulingsDetails'] = rulings_data['data']
-                            card_dict['rulings_last_updated'] = current_time
-
-                            # Update the database with new rulings
-                            cards_collection.update_one(
-                                {"id": scryfall_id},
-                                {"$set": {
-                                    "rulings": rulings_data['data'],
-                                    "rulingsData": rulings_data,
-                                    "rulingsDetails": rulings_data['data'],
-                                    "rulings_last_updated": current_time
-                                }}
-                            )
-
-                            rulings_updated = True
-                            logger.info(f"Rulings updated for card: {card_dict.get('name', 'Unknown')}")
-                        else:
-                            logger.warning(
-                                f"No rulings data found in Scryfall response for card: {card_dict.get('name', 'Unknown')}")
-                    else:
-                        logger.warning(
-                            f"Failed to fetch rulings from Scryfall for card: {card_dict.get('name', 'Unknown')}. Status code: {response.status_code}")
-            except Exception as rulings_error:
-                logger.error(
-                    f"Error fetching rulings for card {card_dict.get('name', 'Unknown')}: {str(rulings_error)}")
-                # Continue processing even if rulings fetch fails
-
-        # Handle rulings - ensure compatibility with both old and new formats
-        # If we didn't update rulings, use existing data
-        if not rulings_updated:
-            # Use rulingsDetails if available for rulings
-            if 'rulingsDetails' in card_dict:
-                card_dict['rulings'] = card_dict['rulingsDetails']
-                # For backward compatibility, also set the data field in rulingsData
-                if 'rulingsData' not in card_dict:
-                    card_dict['rulingsData'] = {'data': card_dict['rulingsDetails']}
-                else:
-                    card_dict['rulingsData']['data'] = card_dict['rulingsDetails']
-            elif 'rulings' not in card_dict:
-                card_dict['rulings'] = []
-                card_dict['rulingsData'] = {'data': []}
-
-        # Get other printings and cards by the same artist if needed
-        other_printings = []
-        cards_by_artist = []
-
-        # Only try to get these if we have the required fields
-        if 'name' in card_dict and card_dict['name']:
-            other_printings = list(cards_collection.find(
-                {"name": card_dict['name'], "id": {"$ne": card_id}}
-            ).limit(6))
-            other_printings = json.loads(json_util.dumps(other_printings))
-
-        if 'artist' in card_dict and card_dict['artist']:
-            cards_by_artist = list(cards_collection.find(
-                {"artist": card_dict['artist'], "id": {"$ne": card_id}}
-            ).limit(6))
-            cards_by_artist = json.loads(json_util.dumps(cards_by_artist))
-
-        logger.info(f"Card found: {card_dict.get('name', 'Unknown')}")
-
-        # Get price history for this card
-        price_history = None
-
-        # If card_slug is None or doesn't match expected slug, redirect to the proper URL
-        if card_slug is None and 'name' in card_dict and card_dict['name']:
-            proper_slug = card_dict['name'].lower().replace(' ', '-').replace(',', '').replace("'", '')
-            # Redirect to URL with proper slug
-            from flask import redirect, url_for
-            return redirect(url_for('card_detail', card_id=card_id, card_slug=proper_slug))
-
-        # Pass all needed data to the template
-        return render_template(
-            'card_detail.html',
-            card=card_dict,
-            other_printings=other_printings,
-            cards_by_artist=cards_by_artist
-        )
-
-    except Exception as e:
-        logger.error(f"Error in card_detail: {str(e)}")
-        logger.error(traceback.format_exc())  # This will print the full stack trace
-        return f"An error occurred: {str(e)}", 500
-
-    finally:
-        total_time = time.time() - start_time
-        logger.info(f"Card detail request completed in {total_time:.2f} seconds")
-        if 'client' in locals():
-            client.close()
 
 
 
@@ -891,16 +777,20 @@ def card_detail(card_id, card_slug):
 @cache.cached(timeout=300)
 def index():
     try:
-        client = MongoClient(os.getenv("MONGO_URI"))
-        db = client['mtgdbmongo']
+        # Use the already established MongoDB connection
+        # This avoids creating a new connection for every request
+        mongo_client = MongoClient(os.getenv("MONGO_URI"))
+        db = mongo_client['mtgdbmongo']
         cards_collection = db['cards']
 
         hero_card = fetch_random_card_from_db()
 
+        # Start background thread for price generation
         thread = threading.Thread(target=generate_spot_price, args=(hero_card['id'],))
         thread.daemon = False  # Ensure thread isn't a daemon
         thread.start()
 
+        # Random card query with proper filters
         random_cmc = random.randint(0, 6)
         random_cards = list(cards_collection.aggregate([
             # Match stage (equivalent to your find filter)
@@ -928,9 +818,10 @@ def index():
         print(traceback.format_exc())
         return f"An error occurred: {e}", 500
     finally:
-        # Safely close the MongoDB client
-        if client:
-            client.close()
+        # Safely close the MongoDB client connection
+        if 'mongo_client' in locals():
+            mongo_client.close()
+
 
 @app.route('/_ah/health', methods=['HEAD', 'GET'])
 def health_check():
@@ -1045,3 +936,153 @@ def gemma_search():
             return render_template('search_error.html', error=str(e))
 
     return render_template('search_form.html')
+
+
+# Troubleshooting the rulings fetch
+import requests
+import time
+
+def fetch_card_rulings(card_id, force_update=False):
+    """
+    Fetch rulings for a card from Scryfall API and save to the card document.
+
+    Args:
+        card_id: The Scryfall ID of the card
+        force_update: If True, fetches from API even if we have cached rulings
+
+    Returns:
+        List of rulings for the card
+    """
+    # Check if we already have recent rulings in the database
+    card = cards_collection.find_one({"id": card_id})
+
+    if not card:
+        print(f"Card {card_id} not found in database")
+        return []
+
+    # Check if we already have recent rulings and don't need to force update
+    if not force_update and card.get("rulings") and card.get("rulings_last_updated"):
+        last_updated = card.get("rulings_last_updated")
+        if last_updated and (datetime.now() - last_updated).days < 30:
+            print(f"Using cached rulings for card {card_id}")
+            return card.get("rulings", [])
+
+    # Fetch fresh rulings from Scryfall
+    try:
+        # Use proper URL format for rulings endpoint
+        url = f"https://api.scryfall.com/cards/{card_id}/rulings"
+
+        # Add logging for debugging
+        print(f"Fetching rulings from: {url}")
+
+        # Add proper headers and respect rate limits
+        headers = {
+            'User-Agent': 'MTGAppName/1.0 (your@email.com)'  # Replace with your app info
+        }
+
+        # Make the request with proper error handling
+        response = requests.get(url, headers=headers)
+
+        # Check if we hit a rate limit
+        if response.status_code == 429:
+            # Wait and retry once
+            print("Rate limited, waiting 1 second...")
+            time.sleep(1)
+            response = requests.get(url, headers=headers)
+
+        # Validate response
+        response.raise_for_status()
+
+        # Parse the response
+        data = response.json()
+
+        # Check if we got rulings data
+        if 'data' in data:
+            rulings = data['data']
+            rulings_count = len(rulings)
+            print(f"Found {rulings_count} rulings for card {card_id}")
+
+            # Update the card document with rulings data
+            cards_collection.update_one(
+                {"id": card_id},
+                {
+                    "$set": {
+                        "rulings": rulings,  # Store in card.rulings
+                        "rulings_count": rulings_count,
+                        "rulings_last_updated": datetime.now()
+                    }
+                }
+            )
+
+            return rulings
+        else:
+            print("No 'data' field in rulings response")
+            # Save empty rulings to avoid repeated failed requests
+            cards_collection.update_one(
+                {"id": card_id},
+                {
+                    "$set": {
+                        "rulings": [],  # Store empty list in card.rulings
+                        "rulings_count": 0,
+                        "rulings_last_updated": datetime.now()
+                    }
+                }
+            )
+            return []
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching rulings: {str(e)}")
+        # Return existing rulings if available
+        if card and card.get("rulings"):
+            return card.get("rulings", [])
+        return []
+    except ValueError as e:
+        print(f"Error parsing rulings JSON: {str(e)}")
+        return []
+
+
+
+# Batch processing function to populate rulings for all cards
+def populate_rulings_for_all_cards(batch_size=100, delay_seconds=0.1):
+    """
+    Populate rulings for all cards in the database.
+    Use this for initial population or periodic full updates.
+
+    Args:
+        batch_size: Number of cards to process in each batch
+        delay_seconds: Delay between API calls to avoid rate limiting
+    """
+    from datetime import timedelta
+
+    # Get all cards that don't have rulings or haven't been updated recently
+    thirty_days_ago = datetime.now() - timedelta(days=30)
+
+    # Find cards needing rulings update
+    cards_needing_rulings = list(cards_collection.find(
+        {
+            "$or": [
+                {"rulings_data": {"$exists": False}},
+                {"rulings_last_updated": {"$lt": thirty_days_ago}}
+            ]
+        },
+        {"id": 1}
+    ).limit(1000))  # Process in chunks of 1000 cards
+
+    print(f"Found {len(cards_needing_rulings)} cards needing rulings updates")
+
+    # Process in batches with rate limiting
+    for i in range(0, len(cards_needing_rulings), batch_size):
+        batch = cards_needing_rulings[i:i + batch_size]
+        print(
+            f"Processing batch {i // batch_size + 1} of {(len(cards_needing_rulings) + batch_size - 1) // batch_size}")
+
+        for card in batch:
+            card_id = card.get("id")
+            if card_id:
+                # Fetch and save rulings
+                fetch_card_rulings(card_id)
+
+                # Wait to avoid rate limiting
+                time.sleep(delay_seconds)
+
+        print(f"Completed batch {i // batch_size + 1}")
