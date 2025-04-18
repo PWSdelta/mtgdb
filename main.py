@@ -829,7 +829,7 @@ def card_detail(card_id, card_slug):
         logger.info(f"Card found: {card_dict.get('name', 'Unknown')}")
 
         # Fetch and create spot price record for this card
-        # spot_price = fetch_single_card_spot_price(card_dict, db)
+        spot_price = fetch_single_card_spot_price(card_dict, db)
 
         # Get price history for this card
         price_history = None
