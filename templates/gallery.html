@@ -19,7 +19,7 @@
     {% for card in cards %}
         <div class="carousel-item carousel-fade {% if loop.first %}active{% endif %}">
             <a href="/card/{{ card.id }}">
-                <img src="{{ card.image_uris.art_crop }}" class="d-block w-100" alt="...">
+                <img src="{{ card['image_uris'].art_crop }}" class="d-block w-100" alt="...">
             </a>
         </div>
     {% endfor %}

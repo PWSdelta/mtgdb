@@ -1,19 +1,19 @@
 import json
 import logging
-import os
 import random
 import threading
 import time
 import traceback
 from datetime import datetime, timezone
+import os
+from pymongo import MongoClient
 
 import requests
 from bson import ObjectId, json_util
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask import render_template, Response
 from flask_cors import CORS
-from pymongo import MongoClient
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -33,8 +33,6 @@ app = Flask(__name__)
 logger = logging.getLogger(__name__)
 CORS(app)
 
-import os
-from pymongo import MongoClient
 
 # Get the MongoDB URI from the environment variable
 mongo_uri = os.environ.get("MONGO_URI")
@@ -43,9 +41,8 @@ if mongo_uri:
     client = MongoClient(mongo_uri)
 else:
     # Fallback to a default URI or handle the error appropriately
-    print("MONGO_URI environment variable not set.  Using a default or exiting.")
+    print("MONGO_URI environment variable not set!.")
     # Consider raising an exception or exiting if the URI is essential
-    client = MongoClient("mongodb://localhost:27017/")  # Replace with a suitable default
 
 db = client.get_database("mtgdbmongo")  # Replace your_database_name if needed
 cards_collection = db.get_collection("cards")
@@ -652,18 +649,30 @@ def get_cards_by_artist(artist_name):
 
 @app.route('/gallery')
 def art_gallery():
-    cards = (session.query(CardDetails).filter(
-            CardDetails.normal_price.isnot(None)
-            ).limit(300)
-             .all())
+    # MongoDB query to fetch 300 cards with images, optimizing for 'images.art_crop'
+    query = {
+        'image_uris.art_crop': {'$exists': True}  # Only cards with 'image_uris.art_crop'
+    }
+
+    projection = {
+        '_id': 0,  # Exclude the _id field
+        'image_uris.art_crop': 1  # Only retrieve the 'images.art_crop' field
+    }
+
+    cards = list(cards_collection.find(query, projection).limit(300))
+    print(f"Found {len(cards)} cards")
 
     if not cards:
         return "Error: cards not found.", 404
+
+    print(cards[0])
 
     return render_template(
         'gallery.html',
         cards=cards
     )
+
+
 
 
 @app.route('/card/<card_id>/<card_slug>')
