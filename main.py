@@ -649,17 +649,19 @@ def get_cards_by_artist(artist_name):
 
 @app.route('/gallery')
 def art_gallery():
-    # MongoDB query to fetch 300 cards with images, optimizing for 'images.art_crop'
-    query = {
-        'image_uris.art_crop': {'$exists': True}  # Only cards with 'image_uris.art_crop'
-    }
+    cards = list(collection.aggregate([
+        {'$match': {
+            'image_uris.art_crop': {'$exists': True},
+            'highres_image': True
+        }},
+        {'$sample': {'size': 10}},
+        {'$project': {
+            '_id': 0,
+            'name': 1,
+            'image_uris.art_crop': 1
+        }}
+    ]))
 
-    projection = {
-        '_id': 0,  # Exclude the _id field
-        'image_uris.art_crop': 1  # Only retrieve the 'images.art_crop' field
-    }
-
-    cards = list(cards_collection.find(query, projection).limit(300))
     print(f"Found {len(cards)} cards")
 
     if not cards:
