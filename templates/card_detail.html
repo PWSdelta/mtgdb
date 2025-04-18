@@ -172,6 +172,94 @@
 
 
 
+        <!-- Price display section - place between card text and TCGPlayer button -->
+        <div class="card shadow-sm my-4 border-0">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0 d-flex align-items-center">
+                    <i class="bi bi-tag-fill me-2"></i>
+                    Current Pricing
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="row g-0 text-center">
+                    <!-- Market Price -->
+                    <div class="col-md-4 price-column">
+                        <div class="p-3">
+                            <div class="text-muted mb-1 small">Market Price</div>
+                            <div class="price-badge">
+                                {% if card.prices and card.prices.marketPrice %}
+                                    <span class="fs-4 fw-bold">${{ card.prices.marketPrice }}</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark">Not Available</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- USD Price -->
+                    <div class="col-md-4 price-column border-start border-end">
+                        <div class="p-3">
+                            <div class="text-muted mb-1 small">USD Price</div>
+                            <div class="price-badge">
+                                {% if card.prices and card.prices.usd %}
+                                    <span class="fs-4 fw-bold">${{ card.prices.usd }}</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark">Not Available</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- EUR Price -->
+                    <div class="col-md-4 price-column">
+                        <div class="p-3">
+                            <div class="text-muted mb-1 small">EUR Price</div>
+                            <div class="price-badge">
+                                {% if card.prices and card.prices.eur %}
+                                    <span class="fs-4 fw-bold">€{{ card.prices.eur }}</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark">Not Available</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .price-column {
+                transition: all 0.2s ease-in-out;
+            }
+
+            .price-column:hover {
+                background-color: rgba(0, 0, 0, 0.03);
+            }
+
+            .price-badge {
+                min-height: 38px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            @media (max-width: 767.98px) {
+                .price-column {
+                    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+                }
+
+                .price-column:last-child {
+                    border-bottom: none;
+                }
+
+                .border-start, .border-end {
+                    border: none !important;
+                }
+            }
+        </style>
+
+
+
 
 
 
@@ -192,7 +280,7 @@
 
 
         <div class="accordion my-5" id="richCardAccordion">
-            {% if card.rulingsDetails and card.rulingsDetails|length > 0 %}
+            {% if card.rulings and card.rulings|length > 0 %}
                 {% include "_card_rulings.html" %}
             {% endif %}
             <div class="accordion-item">

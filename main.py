@@ -61,7 +61,11 @@ db = client.get_database("mtgdbmongo")  # Replace your_database_name if needed
 cards_collection = db.get_collection("cards")
 
 db = client['mtgdbmongo']
-collection = db['cards']
+# Define collection references
+cards_collection = db['cards']
+products_collection = db['products']
+spotprices_collection = db['spotprices']
+
 
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.secret_key = 'B87A0C9SQ54HBT3WBL-0998A3VNM09287NV0'
@@ -88,6 +92,123 @@ def convert_mongo_doc(doc):
         return str(doc)
 
     return doc
+
+
+
+def generate_spot_price(card_id, force_update=False):
+    """
+    Generate spot price data for a card from Scryfall and product collection.
+
+    Args:
+        card_id: The Scryfall ID of the card
+        force_update: If True, regenerates prices even if recently updated
+
+    Returns:
+        True if prices were successfully updated, False otherwise
+    """
+    try:
+        # Check if we already have recent pricing and don't need to force update
+        spot_price = spotprices_collection.find_one({"card_id": card_id}, sort=[("timestamp", -1)])
+        current_time = datetime.now()
+
+        # Save previous price data for comparison
+        previous_prices = {
+            "marketPrice": None,
+            "usd": None,
+            "eur": None
+        }
+
+        if spot_price and "prices" in spot_price:
+            if "marketPrice" in spot_price["prices"]:
+                previous_prices["marketPrice"] = spot_price["prices"]["marketPrice"]
+            if "usd" in spot_price["prices"]:
+                previous_prices["usd"] = spot_price["prices"]["usd"]
+            if "eur" in spot_price["prices"]:
+                previous_prices["eur"] = spot_price["prices"]["eur"]
+
+        if not force_update and spot_price and "timestamp" in spot_price:
+            last_updated = spot_price["timestamp"]
+            # Only update prices once every 12 hours unless forced
+            if (current_time - last_updated).total_seconds() < 43200:  # 12 hours in seconds
+                print(f"Using cached prices for card {card_id} from {last_updated}")
+                return False
+
+        # Get card details from our database (which was populated from Scryfall)
+        card = cards_collection.find_one({"id": card_id, "lang": "en"})
+        if not card:
+            print(f"Card {card_id} not found in database")
+            return False
+
+        # Get card name for top-level field
+        card_name = card.get("name", "")
+
+        # Initialize price data object
+        price_data = {
+            "card_id": card_id,
+            "timestamp": current_time,
+            "name": card_name,
+            "prices": {},
+            "metadata": {
+                "set_code": card.get("set", ""),
+                "collector_number": card.get("collector_number", ""),
+                "rarity": card.get("rarity", ""),
+                "name": card_name
+            }
+        }
+
+        # Add tcgplayer_id if available
+        if card.get("tcgplayer_id"):
+            price_data["tcgplayer_id"] = card["tcgplayer_id"]
+
+        # Step 1: Get Scryfall pricing data (USD and EUR)
+        if "prices" in card:
+            if card["prices"].get("usd"):
+                price_data["prices"]["usd"] = float(card["prices"]["usd"])
+
+            if card["prices"].get("eur"):
+                price_data["prices"]["eur"] = float(card["prices"]["eur"])
+
+        # Step 2: Try to match with TCGPlayer product data if tcgplayer_id exists
+        if card.get("tcgplayer_id"):
+            tcgplayer_updated = update_from_tcgplayer(price_data, card.get("tcgplayer_id"))
+        # If no tcgplayer_id, try to match by name and set
+        elif card.get("name") and card.get("set"):
+            tcgplayer_id = find_tcgplayer_id_by_name_and_set(card.get("name"), card.get("set"))
+            if tcgplayer_id:
+                price_data["tcgplayer_id"] = tcgplayer_id
+                tcgplayer_updated = update_from_tcgplayer(price_data, tcgplayer_id)
+
+        # Only save the data if we have at least one price
+        if price_data["prices"]:
+            # Print the price comparison information
+            print(f"Updated pricing for {card_name} ({card_id})")
+
+            # Print marketPrice comparison if available
+            market_price = price_data["prices"].get("marketPrice")
+            print(f"marketPrice: From {previous_prices['marketPrice']} -> {market_price}")
+
+            # Print USD comparison if available
+            usd_price = price_data["prices"].get("usd")
+            print(f"USD: From {previous_prices['usd']} -> {usd_price}")
+
+            # Print EUR comparison if available
+            eur_price = price_data["prices"].get("eur")
+            print(f"EUR: From {previous_prices['eur']} -> {eur_price}")
+
+            # Store the pricing data
+            result = spotprices_collection.insert_one(price_data)
+            return True
+        else:
+            print(f"No pricing data available for {card_name} ({card_id})")
+            return False
+
+    except Exception as e:
+        import traceback
+        print(f"Error generating spot price for {card_id}: {str(e)}")
+        print(traceback.format_exc())
+        return False
+
+
 
 def fetch_random_card_from_db():
     try:
@@ -165,123 +286,82 @@ def detect_bot_request(request):
 
     return False
 
-def generate_spot_price(card_id):
+
+
+def update_from_tcgplayer(price_data, tcgplayer_id):
     """
-    Generate and store a spot price for a card
+    Update price_data with pricing from your products collection
+
+    Args:
+        price_data: The price data object to update
+        tcgplayer_id: The TCGPlayer ID to match with
+
+    Returns:
+        True if prices were updated, False otherwise
     """
     try:
-        logger.info(f"Starting spot price generation for {card_id}")
-        import sys
-        sys.stdout.flush()  # Force flush output
+        # Query the products collection for the matching TCGPlayer product
+        product = products_collection.find_one({"productId": tcgplayer_id})
 
-        # Initialize MongoDB connection
-        client = MongoClient(os.getenv("MONGO_URI"))
-        db = client['mtgdbmongo']
-        cards_collection = db['cards']
-        spotprices_collection = db['spotprices']
+        if not product:
+            print(f"No matching product found for TCGPlayer ID {tcgplayer_id}")
+            return False
 
-        # Get the card
-        card = cards_collection.find_one({"id": card_id})
-        if not card:
-            logger.warning(f"Attempted to generate spot price for non-existent card: {card_id}")
-            return
+        updated = False
 
-        # Check if we already have a recent spot price (within 24 hours)
-        current_time = datetime.now()
-        last_spot_price = card.get('spotPrice', {})
+        # Extract the pricing information from the product
+        if "marketPrice" in product and product["marketPrice"] is not None:
+            price_data["prices"]["market"] = product["marketPrice"]
+            updated = True
 
-        if last_spot_price and 'timestamp' in last_spot_price:
-            last_update = last_spot_price['timestamp']
-            # If using string timestamps, convert to datetime
-            if isinstance(last_update, str):
-                try:
-                    last_update = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
-                except:
-                    last_update = current_time - timedelta(days=2)  # Force update
+        if "lowPrice" in product and product["lowPrice"] is not None:
+            price_data["prices"]["low"] = product["lowPrice"]
+            updated = True
 
-            # If we've updated within the last 24 hours, skip
-            if (current_time - last_update).total_seconds() < 24 * 60 * 60:
-                logger.info(f"Skipping spot price generation for {card.get('name')} - too recent")
-                return
-
-        # Get price data from the card
-        base_price = 0.0
-
-        # Try different price fields
-        price_fields = ['normal_price', 'prices.usd', 'prices.usd_foil', 'price']
-        for field in price_fields:
-            # Handle nested fields like 'prices.usd'
-            if '.' in field:
-                parts = field.split('.')
-                value = card
-                for part in parts:
-                    if isinstance(value, dict) and part in value:
-                        value = value[part]
-                    else:
-                        value = None
-                        break
-                potential_price = value
-            else:
-                potential_price = card.get(field)
-
-            # Try to convert to float
-            if potential_price is not None:
-                try:
-                    if isinstance(potential_price, str):
-                        potential_price = float(potential_price)
-                    if isinstance(potential_price, (int, float)) and potential_price > 0:
-                        base_price = potential_price
-                        logger.info(f"Using base price {base_price} from field {field}")
-                        break
-                except:
-                    pass
-
-        # Default price if none found
-        if base_price <= 0:
-            base_price = 1.0
-            logger.info(f"No valid price found, using default: {base_price}")
-
-        # Generate a spot price with some randomness
-        import random
-        variation = 0.9 + random.random() * 0.2  # ±10% variation
-        spot_price_value = round(base_price * variation, 2)
-
-        # Create the spot price record
-        timestamp = datetime.now()
-        spot_price = {
-            "card_id": card_id,
-            "card_name": card.get('name', 'Unknown'),
-            "price": spot_price_value,
-            "currency": "USD",
-            "source": "Internal Algorithm",
-            "timestamp": timestamp
-        }
-
-        # Insert into spotprices collection
-        spotprices_collection.insert_one(spot_price)
-
-        # Update the card with the spot price
-        cards_collection.update_one(
-            {"id": card_id},
-            {"$set": {"spotPrice": spot_price}}
-        )
-
-        logger.info(f"Generated spot price of ${spot_price_value} for {card.get('name')}")
-        logger.info(f"Completed spot price generation for {card_id}")
-        sys.stdout.flush()  # Force flush again
+        return updated
 
     except Exception as e:
-        logger.error(f"Error in spot price generation: {str(e)}")
-        # Print stack trace for debugging
-        import traceback
-        logger.error(traceback.format_exc())
-        sys.stdout.flush()  # Force flush on error too
+        print(f"Error updating from TCGPlayer: {str(e)}")
+        return False
 
-    finally:
-        # Ensure we close MongoDB connection
-        if 'client' in locals():
-            client.close()
 
+def find_tcgplayer_id_by_name_and_set(card_name, set_code):
+    """
+    Find a TCGPlayer ID by matching card name and set
+
+    Args:
+        card_name: The name of the card
+        set_code: The set code
+
+    Returns:
+        TCGPlayer ID if found, None otherwise
+    """
+    try:
+        # First try to find the card in our cards collection
+        card = cards_collection.find_one({
+            "name": card_name,
+            "set": set_code,
+            "lang": "en",
+            "tcgplayer_id": {"$exists": True, "$ne": None}
+        })
+
+        if card and card.get("tcgplayer_id"):
+            return card.get("tcgplayer_id")
+
+        # If not found, try to match directly in products collection
+        product = products_collection.find_one({
+            "name": {"$regex": f"^{re.escape(card_name)}$", "$options": "i"},
+            "setCode": set_code.upper()  # Assuming setCode in products is uppercase
+        })
+
+        if product and product.get("productId"):
+            return product.get("productId")
+
+        return None
+
+    except Exception as e:
+        print(f"Error finding TCGPlayer ID: {str(e)}")
+        return None
 
 
 
@@ -646,20 +726,6 @@ def fetch_price_from_tcgplayer_api(tcgplayer_id, card_name, card_id):
         return None
 
 
-def extract_normal_price(api_data):
-    """Extract normal price from TCGPlayer API response"""
-    # Implement based on actual API response structure
-    # This is a placeholder
-    return api_data.get('results', [{}])[0].get('marketPrice')
-
-
-def extract_foil_price(api_data):
-    """Extract foil price from TCGPlayer API response"""
-    # Implement based on actual API response structure
-    # This is a placeholder
-    return api_data.get('results', [{}])[0].get('foilMarketPrice')
-
-
 @app.route('/artists/<artist_name>')
 @cache.cached(timeout=300)
 def get_cards_by_artist(artist_name):
@@ -679,7 +745,14 @@ def get_cards_by_artist(artist_name):
 @app.route('/gallery')
 @cache.cached(timeout=300)
 def art_gallery():
-    cards = list(collection.aggregate([
+    hero_card = fetch_random_card_from_db()
+
+    # Start background thread for price generation
+    thread = threading.Thread(target=generate_spot_price, args=(hero_card['id'],))
+    thread.daemon = False  # Ensure thread isn't a daemon
+    thread.start()
+
+    cards = list(cards_collection.aggregate([
         {'$match': {
             'image_uris.art_crop': {'$exists': True},
             'highres_image': True
@@ -717,7 +790,7 @@ def card_detail(card_id, card_slug=None):
     if not card:
         return render_template('error.html', message="Card not found"), 404
 
-    thread = threading.Thread(target=generate_spot_price, args=(hero_card['id'],))
+    thread = threading.Thread(target=generate_spot_price, args=(card_id,))
     thread.daemon = False  # Ensure thread isn't a daemon
     thread.start()
 
