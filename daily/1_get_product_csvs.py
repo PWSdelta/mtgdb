@@ -16,8 +16,8 @@ chromedriver_path = r"C:\Users\Owner\Downloads\chromedriver-win64\chromedriver.e
 
 # Desired game IDs
 # desired_game_ids = {i: None for i in range(1, 87)}
-desired_game_ids = { 1, 2, 3, 68, 71 }
-# desired_game_ids = { 1 }
+# desired_game_ids = { 1, 2, 3, 68, 71 }
+desired_game_ids = { 1 }
 # desired_game_ids = { 1, 3, 7, 9, 10, 13, 16, 17, 19, 20, 21, 23, 24, 25, 37, 38, 53, 61, 62, 63, 64, 65, 66, 68, 74, 75, 76, 77, 78, 79, 80, 81, 83, 84, 85, 86 }
 
 # Directory to save downloaded files

@@ -847,7 +847,7 @@ def card_detail(card_id, card_slug=None):
 
 
 @app.route('/')
-@cache.cached(timeout=300)
+@cache.cached(timeout=600)
 def index():
     try:
         # Use the already established MongoDB connection
@@ -871,10 +871,10 @@ def index():
                 "tcgplayer_id": {"$ne": None},
                 "lang": "en",
                 "games": "paper",
-                "cmc": {"$lt": random_cmc}
+                'highres_image': True
             }},
             # Sample stage
-            {'$sample': {'size': 167}},
+            {'$sample': {'size': 12}},
             # Project stage (equivalent to your projection)
             {'$project': {
                 "_id": 1, "id": 1, "name": 1, "artist": 1,
