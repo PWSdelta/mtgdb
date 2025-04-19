@@ -53,13 +53,7 @@ REQUEST_TIMEOUT = 30  # Timeout in seconds
 DELAY_BETWEEN_BATCHES = 1  # Delay between batches in seconds
 
 
-
-
-
 CORS(app)
-
-
-
 
 
 
