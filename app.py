@@ -68,9 +68,9 @@ if mongo_uri:
     # client = MongoClient(mongo_uri)
     client = pymongo.MongoClient(
         mongo_uri,
-        connectTimeoutMS=30000,  # Increase connection timeout
+        connectTimeoutMS=120000,  # Increase connection timeout
         socketTimeoutMS=45000,  # Increase socket timeout
-        serverSelectionTimeoutMS=30000,  # Increase server selection timeout
+        serverSelectionTimeoutMS=120000,  # Increase server selection timeout
         retryWrites=True,  # Enable retry for write operations
         tlsInsecure=False  # Ensure proper SSL validation
     )
