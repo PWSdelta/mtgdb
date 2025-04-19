@@ -4,7 +4,7 @@ import os
 import random
 import threading
 from datetime import datetime, timedelta
-
+import re
 from bson import ObjectId, json_util
 from dotenv import load_dotenv
 from flask import Flask, render_template
@@ -38,10 +38,30 @@ cache_config = {
 cache = Cache()
 cache.init_app(app, config=cache_config)  # Separate initialization
 
+# Configuration
+BASE_URL = "http://localhost:5000"
+ROUTES = [
+    "/",
+    # Add specific card details pages that are frequently accessed
+    # "/card/123",  # Example card detail page
+    # "/artist/john-doe",  # Example artist gallery
+    # Add more routes as needed
+]
+
+CONCURRENT_REQUESTS = 5  # Number of concurrent requests
+REQUEST_TIMEOUT = 30  # Timeout in seconds
+DELAY_BETWEEN_BATCHES = 1  # Delay between batches in seconds
+
+
 
 
 
 CORS(app)
+
+
+
+
+
 
 
 # Get the MongoDB URI from the environment variable
@@ -933,7 +953,7 @@ def process_batch():
                 # Only process English cards as per the generate_spot_price logic
                 "lang": "en"
             }},
-            {"$sample": {"size": 100}}
+            {"$sample": {"size": 513137}}
         ]
 
         # Execute the aggregation
@@ -1352,3 +1372,61 @@ def populate_rulings_for_all_cards(batch_size=100, delay_seconds=0.1):
                 time.sleep(delay_seconds)
 
         print(f"Completed batch {i // batch_size + 1}")
+
+
+async def fetch_url(session, url):
+    """Fetch a single URL and return the status"""
+    try:
+        start_time = time.time()
+        async with session.get(url, timeout=REQUEST_TIMEOUT) as response:
+            elapsed = time.time() - start_time
+            status = response.status
+            logger.info(f"Warmed up {url} - Status: {status} - Time: {elapsed:.2f}s")
+            return {
+                "url": url,
+                "status": status,
+                "time": elapsed
+            }
+    except Exception as e:
+        logger.error(f"Error warming up {url}: {str(e)}")
+        return {
+            "url": url,
+            "status": "Error",
+            "time": 0,
+            "error": str(e)
+        }
+
+
+async def warm_up_caches():
+    """Warm up all specified routes with limited concurrency"""
+    logger.info(f"Starting cache warming for {len(ROUTES)} routes")
+    start_time = time.time()
+
+    # Create full URLs
+    urls = [urljoin(BASE_URL, route) for route in ROUTES]
+    results = []
+
+    # Use connection pooling with SSL
+    conn = aiohttp.TCPConnector(ssl=False, limit=CONCURRENT_REQUESTS)
+    async with aiohttp.ClientSession(connector=conn) as session:
+        # Process in batches to control concurrency
+        for i in range(0, len(urls), CONCURRENT_REQUESTS):
+            batch = urls[i:i + CONCURRENT_REQUESTS]
+            tasks = [fetch_url(session, url) for url in batch]
+            batch_results = await asyncio.gather(*tasks)
+            results.extend(batch_results)
+
+            if i + CONCURRENT_REQUESTS < len(urls):
+                # Add delay between batches to avoid overloading the server
+                await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+
+    total_time = time.time() - start_time
+
+    # Summary
+    success_count = sum(1 for r in results if isinstance(r["status"], int) and 200 <= r["status"] < 300)
+    error_count = len(results) - success_count
+
+    logger.info(f"Cache warming completed in {total_time:.2f}s")
+    logger.info(f"Success: {success_count}, Errors: {error_count}")
+
+    return results
