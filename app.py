@@ -2,9 +2,12 @@ import json
 import logging
 import os
 import random
+import ssl
 import threading
 from datetime import datetime, timedelta
 import re
+
+import pymongo
 from bson import ObjectId, json_util
 from dotenv import load_dotenv
 from flask import Flask, render_template
@@ -62,14 +65,23 @@ CORS(app)
 mongo_uri = os.environ.get("MONGO_URI")
 
 if mongo_uri:
-    client = MongoClient(mongo_uri)
+    # client = MongoClient(mongo_uri)
+    client = pymongo.MongoClient(
+        mongo_uri,
+        connectTimeoutMS=30000,  # Increase connection timeout
+        socketTimeoutMS=45000,  # Increase socket timeout
+        serverSelectionTimeoutMS=30000,  # Increase server selection timeout
+        retryWrites=True,  # Enable retry for write operations
+        tlsInsecure=False  # Ensure proper SSL validation
+    )
+
 else:
     # Fallback to a default URI or handle the error appropriately
     print("MONGO_URI environment variable not set!.")
     # Consider raising an exception or exiting if the URI is essential
 
-db = client.get_database("mtgdbmongo")  # Replace your_database_name if needed
-cards_collection = db.get_collection("cards")
+db = client.get_database("mtgdbmongo")
+cards_collection = db.get_collection("products")
 
 db = client['mtgdbmongo']
 # Define collection references
