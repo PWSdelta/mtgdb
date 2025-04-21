@@ -6,6 +6,7 @@ import ssl
 import threading
 from datetime import datetime, timedelta
 import re
+import math
 
 import pymongo
 from bson import ObjectId, json_util
@@ -1403,36 +1404,246 @@ async def fetch_url(session, url):
         }
 
 
-async def warm_up_caches():
-    """Warm up all specified routes with limited concurrency"""
-    logger.info(f"Starting cache warming for {len(ROUTES)} routes")
-    start_time = time.time()
+def generate_card_sitemaps(base_url: str, sitemap_dir: str = "sitemaps") -> str:    
+    """Generate sitemap files for cards and a sitemap index"""
+    try:
+        # Connect to MongoDB
+        client = MongoClient(os.getenv("MONGO_URI"))
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
+        
+        # Log some info
+        logger.info("Connected to MongoDB successfully")
+        total_cards = cards_collection.count_documents({"lang": "en"})
+        logger.info(f"Found {total_cards} English cards to process")
 
-    # Create full URLs
-    urls = [urljoin(BASE_URL, route) for route in ROUTES]
-    results = []
+        # Create sitemaps directory if it doesn't exist
+        sitemap_dir = os.path.abspath(sitemap_dir)
+        os.makedirs(sitemap_dir, exist_ok=True)
+        logger.info(f"Using sitemaps directory: {sitemap_dir}")
 
-    # Use connection pooling with SSL
-    conn = aiohttp.TCPConnector(ssl=False, limit=CONCURRENT_REQUESTS)
-    async with aiohttp.ClientSession(connector=conn) as session:
-        # Process in batches to control concurrency
-        for i in range(0, len(urls), CONCURRENT_REQUESTS):
-            batch = urls[i:i + CONCURRENT_REQUESTS]
-            tasks = [fetch_url(session, url) for url in batch]
-            batch_results = await asyncio.gather(*tasks)
-            results.extend(batch_results)
+        # Constants
+        URLS_PER_SITEMAP = 9999
+        current_date = datetime.now().strftime("%Y-%m-%d")
 
-            if i + CONCURRENT_REQUESTS < len(urls):
-                # Add delay between batches to avoid overloading the server
-                await asyncio.sleep(DELAY_BETWEEN_BATCHES)
+        # Calculate total sitemaps needed
+        total_sitemaps = math.ceil(total_cards / URLS_PER_SITEMAP)
+        logger.info(f"Will generate {total_sitemaps} sitemap files")
 
-    total_time = time.time() - start_time
+        sitemap_files = []
 
-    # Summary
-    success_count = sum(1 for r in results if isinstance(r["status"], int) and 200 <= r["status"] < 300)
-    error_count = len(results) - success_count
+        # Generate individual sitemaps
+        for i in range(total_sitemaps):
+            sitemap_name = f"sitemap-cards-{i+1}.xml"
+            sitemap_path = os.path.join(sitemap_dir, sitemap_name)
+            logger.info(f"Generating sitemap {i+1}/{total_sitemaps}: {sitemap_name}")
 
-    logger.info(f"Cache warming completed in {total_time:.2f}s")
-    logger.info(f"Success: {success_count}, Errors: {error_count}")
+            # Get batch of cards
+            cards = cards_collection.find(
+                {"lang": "en"},
+                {"id": 1, "name": 1, "updated_at": 1}
+            ).skip(i * URLS_PER_SITEMAP).limit(URLS_PER_SITEMAP)
 
-    return results
+            # Generate sitemap content
+            sitemap_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+            sitemap_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+            url_count = 0
+            for card in cards:
+                # Generate URL-safe slug from card name
+                slug = card.get("name", "").lower().replace(" ", "-").replace(",", "").replace("'", "")
+                
+                # Get last modified date
+                lastmod = card.get("updated_at", datetime.now()).strftime("%Y-%m-%d")
+
+                sitemap_content += f"""  <url>
+    <loc>{base_url}/card/{card['id']}/{slug}</loc>
+    <lastmod>{lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>\n"""
+                url_count += 1
+
+            sitemap_content += '</urlset>'
+
+            # Write sitemap file
+            with open(sitemap_path, 'w', encoding='utf-8') as f:
+                f.write(sitemap_content)
+
+            logger.info(f"Wrote {url_count} URLs to {sitemap_name}")
+
+            sitemap_files.append({
+                'filename': sitemap_name,
+                'path': sitemap_path,
+                'url': f"{base_url}/sitemaps/{sitemap_name}"
+            })
+
+        # Generate sitemap index
+        logger.info("Generating sitemap index...")
+        index_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        index_content += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+        for sitemap in sitemap_files:
+            index_content += f"""  <sitemap>
+    <loc>{sitemap['url']}</loc>
+    <lastmod>{current_date}</lastmod>
+  </sitemap>\n"""
+
+        index_content += '</sitemapindex>'
+
+        # Write sitemap index
+        index_path = os.path.join(sitemap_dir, 'sitemap.xml')
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write(index_content)
+
+        logger.info(f"Sitemap index written to {index_path}")
+        logger.info(f"Generated {len(sitemap_files)} sitemap files with {total_cards} total URLs")
+
+        return index_path
+
+    except Exception as e:
+        logger.error(f"Error generating sitemaps: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
+
+    finally:
+        if 'client' in locals():
+            client.close()
+            logger.info("MongoDB connection closed")
+
+
+def generate_card_sitemaps(base_url: str, sitemap_dir: str = "sitemaps") -> str:    
+    """Generate sitemap files for cards and a sitemap index"""
+    try:
+        # Connect to MongoDB
+        client = MongoClient(os.getenv("MONGO_URI"))
+        db = client['mtgdbmongo']
+        cards_collection = db['cards']
+        
+        # Log some info
+        logger.info("Connected to MongoDB successfully")
+        total_cards = cards_collection.count_documents({"lang": "en"})
+        logger.info(f"Found {total_cards} English cards to process")
+
+        # Create sitemaps directory if it doesn't exist
+        sitemap_dir = os.path.abspath(sitemap_dir)
+        os.makedirs(sitemap_dir, exist_ok=True)
+        logger.info(f"Using sitemaps directory: {sitemap_dir}")
+
+        # Constants
+        URLS_PER_SITEMAP = 50000
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
+        # Calculate total sitemaps needed
+        total_sitemaps = math.ceil(total_cards / URLS_PER_SITEMAP)
+        logger.info(f"Will generate {total_sitemaps} sitemap files")
+
+        sitemap_files = []
+
+        # Generate individual sitemaps
+        for i in range(total_sitemaps):
+            sitemap_name = f"sitemap-cards-{i+1}.xml"
+            sitemap_path = os.path.join(sitemap_dir, sitemap_name)
+            logger.info(f"Generating sitemap {i+1}/{total_sitemaps}: {sitemap_name}")
+
+            # Get batch of cards
+            cards = cards_collection.find(
+                {"lang": "en"},
+                {"id": 1, "name": 1, "updated_at": 1}
+            ).skip(i * URLS_PER_SITEMAP).limit(URLS_PER_SITEMAP)
+
+            # Generate sitemap content
+            sitemap_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+            sitemap_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+            url_count = 0
+            for card in cards:
+                # Generate URL-safe slug from card name
+                slug = card.get("name", "").lower().replace(" ", "-").replace(",", "").replace("'", "")
+                
+                # Get last modified date
+                lastmod = card.get("updated_at", datetime.now()).strftime("%Y-%m-%d")
+
+                sitemap_content += f"""  <url>
+    <loc>{base_url}/card/{card['id']}/{slug}</loc>
+    <lastmod>{lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>\n"""
+                url_count += 1
+
+            sitemap_content += '</urlset>'
+
+            # Write sitemap file
+            with open(sitemap_path, 'w', encoding='utf-8') as f:
+                f.write(sitemap_content)
+
+            logger.info(f"Wrote {url_count} URLs to {sitemap_name}")
+
+            sitemap_files.append({
+                'filename': sitemap_name,
+                'path': sitemap_path,
+                'url': f"{base_url}/sitemaps/{sitemap_name}"
+            })
+
+        # Generate sitemap index
+        logger.info("Generating sitemap index...")
+        index_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        index_content += '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+        for sitemap in sitemap_files:
+            index_content += f"""  <sitemap>
+    <loc>{sitemap['url']}</loc>
+    <lastmod>{current_date}</lastmod>
+  </sitemap>\n"""
+
+        index_content += '</sitemapindex>'
+
+        # Write sitemap index
+        index_path = os.path.join(sitemap_dir, 'sitemap.xml')
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write(index_content)
+
+        logger.info(f"Sitemap index written to {index_path}")
+        logger.info(f"Generated {len(sitemap_files)} sitemap files with {total_cards} total URLs")
+
+        return index_path
+
+    except Exception as e:
+        logger.error(f"Error generating sitemaps: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
+
+    finally:
+        if 'client' in locals():
+            client.close()
+            logger.info("MongoDB connection closed")
+
+@app.route('/sitemap.xml')
+def sitemap_index():
+    """Serve the sitemap index file"""
+    # Generate sitemaps if they don't exist
+    if not os.path.exists('sitemaps/sitemap.xml'):
+        generate_card_sitemaps(base_url="https://tcgplex.com")
+    
+    return send_from_directory('sitemaps', 'sitemap.xml')
+
+@app.route('/sitemaps/<path:filename>')
+def serve_sitemap(filename):
+    """Serve individual sitemap files"""
+    return send_from_directory('sitemaps', filename)
+
+@app.route('/asdfasdf')
+def asdf():
+    try:
+        logger.info("Starting sitemap generation...")
+        result = generate_card_sitemaps(base_url="https://tcgplex.com")
+        logger.info(f"Sitemaps generated successfully at: {result}")
+        return f"Sitemaps generated at: {result}"
+    except Exception as e:
+        logger.error(f"Error generating sitemaps: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return f"Error generating sitemaps: {str(e)}", 500
