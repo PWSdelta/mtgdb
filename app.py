@@ -12,7 +12,7 @@ import pymongo
 from bson import ObjectId, json_util
 from dotenv import load_dotenv
 from flask import Flask, render_template
-from flask import Response
+from flask import Response, send_from_directory
 from flask import jsonify, request
 from flask_caching import Cache
 from flask_cors import CORS
@@ -55,6 +55,9 @@ ROUTES = [
 CONCURRENT_REQUESTS = 5  # Number of concurrent requests
 REQUEST_TIMEOUT = 30  # Timeout in seconds
 DELAY_BETWEEN_BATCHES = 1  # Delay between batches in seconds
+
+# Define sitemap directory as a constant at the top of your file
+SITEMAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "sitemaps")
 
 
 CORS(app)
@@ -1624,16 +1627,50 @@ def generate_card_sitemaps(base_url: str, sitemap_dir: str = "sitemaps") -> str:
 @app.route('/sitemap.xml')
 def sitemap_index():
     """Serve the sitemap index file"""
-    # Generate sitemaps if they don't exist
-    if not os.path.exists('sitemaps/sitemap.xml'):
-        generate_card_sitemaps(base_url="https://tcgplex.com")
-    
-    return send_from_directory('sitemaps', 'sitemap.xml')
+    try:
+        # Generate sitemaps if they don't exist
+        if not os.path.exists(os.path.join(SITEMAP_DIR, 'sitemap.xml')):
+            logger.info("Sitemap index not found, generating sitemaps...")
+            generate_card_sitemaps(
+                base_url="https://www.tcgplex.com", 
+                sitemap_dir=SITEMAP_DIR
+            )
+        
+        logger.info(f"Serving sitemap index from {SITEMAP_DIR}")
+        return send_from_directory(SITEMAP_DIR, 'sitemap.xml')
+    except Exception as e:
+        logger.error(f"Error serving sitemap index: {str(e)}")
+        return str(e), 500
 
 @app.route('/sitemaps/<path:filename>')
 def serve_sitemap(filename):
     """Serve individual sitemap files"""
-    return send_from_directory('sitemaps', filename)
+    try:
+        logger.info(f"Attempting to serve sitemap file: {filename} from {SITEMAP_DIR}")
+        return send_from_directory(SITEMAP_DIR, filename)
+    except Exception as e:
+        logger.error(f"Error serving sitemap file {filename}: {str(e)}")
+        return str(e), 404
+
+@app.route('/generate-sitemaps')
+def generate_sitemaps():
+    """Force regeneration of all sitemaps"""
+    try:
+        logger.info("Starting sitemap generation...")
+        # Make sure the static/sitemaps directory exists
+        os.makedirs(SITEMAP_DIR, exist_ok=True)
+        
+        result = generate_card_sitemaps(
+            base_url="https://www.tcgplex.com",
+            sitemap_dir=SITEMAP_DIR
+        )
+        logger.info(f"Sitemaps generated successfully at: {result}")
+        return f"Sitemaps generated at: {result}"
+    except Exception as e:
+        logger.error(f"Error generating sitemaps: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return f"Error generating sitemaps: {str(e)}", 500
 
 @app.route('/asdfasdf')
 def asdf():
