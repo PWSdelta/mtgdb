@@ -56,8 +56,8 @@ CONCURRENT_REQUESTS = 5  # Number of concurrent requests
 REQUEST_TIMEOUT = 30  # Timeout in seconds
 DELAY_BETWEEN_BATCHES = 1  # Delay between batches in seconds
 
-# Define sitemap directory as a constant at the top of your file
-SITEMAP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "sitemaps")
+# Define sitemap directory as a constant
+SITEMAP_DIR = "static/sitemaps"
 
 
 CORS(app)
