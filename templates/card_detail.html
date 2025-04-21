@@ -182,19 +182,20 @@
             </div>
             <div class="card-body p-0">
                 <div class="row g-0 text-center">
-                    <!-- Market Price -->
-                    <div class="col-md-4 price-column">
-                        <div class="p-3">
-                            <div class="text-muted mb-1 small">Market Price</div>
-                            <div class="price-badge">
-                                {% if card.prices and card.prices.marketPrice %}
-                                    <span class="fs-4 fw-bold">${{ card.prices.marketPrice }}</span>
-                                {% else %}
-                                    <span class="badge bg-light text-dark">Not Available</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+
+<!-- Market Price -->
+<div class="col-md-4 price-column">
+    <div class="p-3">
+        <div class="text-muted mb-1 small">Market Price</div>
+        <div class="price-badge">
+            {% if card['price_data'] and card['price_data']['market_price'] %}
+                <span class="fs-4 fw-bold">${{ "%.2f"|format(card['price_data']['market_price']) }}</span>
+            {% else %}
+                <span class="badge bg-light text-dark">Not Available</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
 
                     <!-- USD Price -->
                     <div class="col-md-4 price-column border-start border-end">

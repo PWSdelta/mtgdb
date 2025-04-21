@@ -42,15 +42,7 @@ cache_config = {
 cache = Cache()
 cache.init_app(app, config=cache_config)  # Separate initialization
 
-# Configuration
-BASE_URL = "http://localhost:5000"
-ROUTES = [
-    "/",
-    # Add specific card details pages that are frequently accessed
-    # "/card/123",  # Example card detail page
-    # "/artist/john-doe",  # Example artist gallery
-    # Add more routes as needed
-]
+
 
 CONCURRENT_REQUESTS = 5  # Number of concurrent requests
 REQUEST_TIMEOUT = 30  # Timeout in seconds
@@ -806,69 +798,68 @@ def art_gallery():
 
 
 
-# Integration with your card detail route
 @app.route('/card/<card_id>/<card_slug>')
 @app.route('/card/<card_id>', defaults={'card_slug': None})
 @cache.cached(timeout=3600)  # Cache for an hour
 def card_detail(card_id, card_slug=None):
     """Card detail page with rulings"""
+    try:
+        # Get the card first
+        card = cards_collection.find_one({"id": card_id})
+        if not card:
+            return render_template('error.html', message="Card not found"), 404
 
-    card = cards_collection.find_one({"id": card_id})
-    if not card:
-        return render_template('error.html', message="Card not found"), 404
+        # If card has tcgplayer_id, get the product pricing
+        if card.get('tcgplayer_id'):
+            # Look up product by tcgplayer_id
+            product = products_collection.find_one({"productId": card['tcgplayer_id']})
+            if product:
+                # Add pricing data to card object
+                card['price_data'] = {
+                    'market_price': product.get('marketPrice'),
+                    'low_price': product.get('lowPrice'),
+                    'last_updated': product.get('lastUpdated', datetime.now())
+                }
+            else:
+                card['price_data'] = None
+                logger.warning(f"No product found for tcgplayer_id: {card['tcgplayer_id']}")
 
-    thread = threading.Thread(target=generate_spot_price, args=(card_id,))
-    thread.daemon = False  # Ensure thread isn't a daemon
-    thread.start()
+        # Start background thread for price generation
+        thread = threading.Thread(target=generate_spot_price, args=(card_id,))
+        thread.daemon = False
+        thread.start()
 
-    # Get rulings from the card document (or API if needed)
-    # If the card already has rulings_data, use that
-    if card.get("rulings_data") is not None:
-        rulings = card.get("rulings_data", [])
-
-        # Check if we need to refresh rulings in the background
-        last_updated = card.get("rulings_last_updated")
-        if last_updated and (datetime.now() - last_updated).days > 30:
-            # Fetch updated rulings in the background
-            from threading import Thread
-            update_thread = Thread(target=fetch_card_rulings, args=(card_id, True))
-            update_thread.daemon = True
-            update_thread.start()
-    else:
-        # No rulings yet, fetch them now
+        # Get rulings
         rulings = fetch_card_rulings(card_id)
 
-    # Get other printings of the same card (English only)
-    other_printings = []
-    if card.get("oracle_id"):
-        other_printings = list(cards_collection.find({
-            "oracle_id": card.get("oracle_id"),
-            "id": {"$ne": card_id},
-            "lang": "en"  # English language filter
-        }).sort("released_at", -1))
+        # Get other printings of the same card (English only)
+        other_printings = []
+        if card.get("oracle_id"):
+            other_printings = list(cards_collection.find({
+                "oracle_id": card.get("oracle_id"),
+                "id": {"$ne": card_id},
+                "lang": "en"  # English language filter
+            }).sort("released_at", -1))
 
-    # Get cards by the same artist (English only)
-    cards_by_artist = []
-    if card.get("artist"):
-        cards_by_artist = list(cards_collection.find({
-            "artist": card.get("artist"),
-            "id": {"$ne": card_id},
-            "lang": "en"  # English language filter
-        }).limit(12))
+        # Get cards by the same artist (English only)
+        cards_by_artist = []
+        if card.get("artist"):
+            cards_by_artist = list(cards_collection.find({
+                "artist": card.get("artist"),
+                "id": {"$ne": card_id},
+                "lang": "en"  # English language filter
+            }).limit(12))
 
-    # Get similar cards for recommendations (English only)
-    similar_cards = list(cards_collection.find({
-        "set_name": card.get("set_name"),
-        "id": {"$ne": card_id},
-        "lang": "en"  # English language filter
-    }).limit(6))
+        # Render template with all card data
+        return render_template('card_detail.html',
+                            card=card,
+                            rulings=rulings,
+                            other_printings=other_printings,
+                            cards_by_artist=cards_by_artist)
 
-    return render_template('card_detail.html',
-                           card=card,
-                           similar_cards=similar_cards,
-                           rulings=rulings,
-                           other_printings=other_printings,
-                           cards_by_artist=cards_by_artist)
+    except Exception as e:
+        logger.error(f"Error in card_detail: {str(e)}")
+        return render_template('error.html', message="An error occurred"), 500
 
 
 
