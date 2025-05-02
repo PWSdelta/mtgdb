@@ -848,7 +848,7 @@ def card_detail(card_id, card_slug=None):
                 "artist": card.get("artist"),
                 "id": {"$ne": card_id},
                 "lang": "en"  # English language filter
-            }).limit(12))
+            }).limit(121))
 
         # Render template with all card data
         return render_template('card_detail.html',
@@ -892,7 +892,7 @@ def index():
                 'highres_image': True
             }},
             # Sample stage
-            {'$sample': {'size': 12}},
+            {'$sample': {'size': 187}},
             # Project stage (equivalent to your projection)
             {'$project': {
                 "_id": 1, "id": 1, "name": 1, "artist": 1,
