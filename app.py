@@ -1663,15 +1663,20 @@ def generate_sitemaps():
         logger.error(traceback.format_exc())
         return f"Error generating sitemaps: {str(e)}", 500
 
-@app.route('/asdfasdf')
-def asdf():
-    try:
-        logger.info("Starting sitemap generation...")
-        result = generate_card_sitemaps(base_url="https://tcgplex.com")
-        logger.info(f"Sitemaps generated successfully at: {result}")
-        return f"Sitemaps generated at: {result}"
-    except Exception as e:
-        logger.error(f"Error generating sitemaps: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return f"Error generating sitemaps: {str(e)}", 500
+# @app.route('/asdfasdf')
+# def asdf():
+#     try:
+#         logger.info("Starting sitemap generation...")
+#         result = generate_card_sitemaps(base_url="https://tcgplex.com")
+#         logger.info(f"Sitemaps generated successfully at: {result}")
+#         return f"Sitemaps generated at: {result}"
+#     except Exception as e:
+#         logger.error(f"Error generating sitemaps: {str(e)}")
+#         import traceback
+#         logger.error(traceback.format_exc())
+#         return f"Error generating sitemaps: {str(e)}", 500
+
+@app.route('/ads.txt')
+def ads_txt():
+    """Serve the ads.txt file"""
+    return send_from_directory('static', 'ads.txt')
