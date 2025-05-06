@@ -11,7 +11,7 @@ import math
 import pymongo
 from bson import ObjectId, json_util
 from dotenv import load_dotenv
-from flask import Flask, render_template
+from flask import Flask, render_template, redirect
 from flask import Response, send_from_directory
 from flask import jsonify, request
 from flask_caching import Cache
@@ -70,7 +70,6 @@ if mongo_uri:
         retryWrites=True,  # Enable retry for write operations
         tlsInsecure=False  # Ensure proper SSL validation
     )
-
 else:
     # Fallback to a default URI or handle the error appropriately
     print("MONGO_URI environment variable not set!.")
@@ -98,6 +97,12 @@ class JSONEncoder(json.JSONEncoder):
 
 # Then in your Flask app:
 app.json_encoder = JSONEncoder
+
+
+@app.before_request
+def before_request():
+    if not request.is_secure:
+        return redirect(request.url.replace("http://", "https://"))
 
 def convert_mongo_doc(doc):
     """Convert MongoDB document to be JSON serializable"""
@@ -922,8 +927,6 @@ def health_check():
 def get_healthy():
     return Response('ok', status=200, mimetype='text/plain')
 
-
-
 @app.route('/process_batch', methods=['GET'])
 def process_batch():
     start_time = datetime.now()
@@ -1032,7 +1035,6 @@ def process_batch():
             client.close()
             logger.info(f"[Batch-{batch_id}] MongoDB connection closed")
 
-
 def continuous_price_updater(mongo_uri):
     """
     Background thread that continuously updates spot prices in small batches
@@ -1135,15 +1137,11 @@ def continuous_price_updater(mongo_uri):
             if client:
                 client.close()
 
-
 # Function to start the background thread when your application starts
 def start_continuous_updater():
     thread = threading.Thread(target=continuous_price_updater, daemon=True)
     thread.start()
     logger.info("Continuous price updater thread started")
-
-
-
 
 def query_gemma(prompt, model="gemma3:4b"):
     """Query the local Ollama Gemma model"""
@@ -1223,7 +1221,6 @@ def gemma_search():
             return render_template('search_error.html', error=str(e))
 
     return render_template('search_form.html')
-
 
 # Troubleshooting the rulings fetch
 import requests
@@ -1327,8 +1324,6 @@ def fetch_card_rulings(card_id, force_update=False):
         print(f"Error parsing rulings JSON: {str(e)}")
         return []
 
-
-
 # Batch processing function to populate rulings for all cards
 def populate_rulings_for_all_cards(batch_size=100, delay_seconds=0.1):
     """
@@ -1374,7 +1369,6 @@ def populate_rulings_for_all_cards(batch_size=100, delay_seconds=0.1):
 
         print(f"Completed batch {i // batch_size + 1}")
 
-
 async def fetch_url(session, url):
     """Fetch a single URL and return the status"""
     try:
@@ -1396,7 +1390,6 @@ async def fetch_url(session, url):
             "time": 0,
             "error": str(e)
         }
-
 
 def generate_card_sitemaps(base_url: str, sitemap_dir: str = "sitemaps") -> str:    
     """Generate sitemap files for cards and a sitemap index"""
@@ -1505,7 +1498,6 @@ def generate_card_sitemaps(base_url: str, sitemap_dir: str = "sitemaps") -> str:
         if 'client' in locals():
             client.close()
             logger.info("MongoDB connection closed")
-
 
 def generate_card_sitemaps(base_url: str, sitemap_dir: str = "sitemaps") -> str:    
     """Generate sitemap files for cards and a sitemap index"""
@@ -1663,20 +1655,11 @@ def generate_sitemaps():
         logger.error(traceback.format_exc())
         return f"Error generating sitemaps: {str(e)}", 500
 
-# @app.route('/asdfasdf')
-# def asdf():
-#     try:
-#         logger.info("Starting sitemap generation...")
-#         result = generate_card_sitemaps(base_url="https://tcgplex.com")
-#         logger.info(f"Sitemaps generated successfully at: {result}")
-#         return f"Sitemaps generated at: {result}"
-#     except Exception as e:
-#         logger.error(f"Error generating sitemaps: {str(e)}")
-#         import traceback
-#         logger.error(traceback.format_exc())
-#         return f"Error generating sitemaps: {str(e)}", 500
-
 @app.route('/ads.txt')
 def ads_txt():
     """Serve the ads.txt file"""
     return send_from_directory('static', 'ads.txt')
+
+
+if __name__ == "__main__":
+    app.run(ssl_context=('static/mydomain.crt', 'static/mydomain.key'))
